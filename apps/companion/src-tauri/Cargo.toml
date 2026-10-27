@@ -1,0 +1,30 @@
+[package]
+name = "tickly-companion"
+version = "0.9.0"
+edition = "2021"
+license = "MIT"
+description = "Tickly Companion: erkennt Arbeitsbeginn, Sperre und aktive App und meldet sie dem Server"
+
+# Eigenständig gebaut (Tauri braucht das gebaute Frontend), nicht Teil des Cargo-Workspace im Wurzelverzeichnis.
+[workspace]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-autostart = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-single-instance = "2"
+tickly-agent = { path = "../../../crates/agent" }
+tickly-platform = { path = "../../../crates/platform" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+keyring = { version = "3", features = ["apple-native", "windows-native"] }
+
+[profile.release]
+lto = "thin"
+strip = true
+codegen-units = 4

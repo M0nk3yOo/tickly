@@ -1,0 +1,39 @@
+# Tickly Companion
+
+Tauri-2-App (Rust + React). Sitzt im Tray bzw. in der Menüleiste und meldet dem Server Rechnerstart, Bildschirmsperre, aktive App und Beenden.
+
+## Aufbau
+
+- `src-tauri/` – Rust: Tray, Fenster, Schlüsselbund, Tracking-Schleife (alle 2 s). Die eigentliche Logik steckt in den Crates [`tickly-agent`](../../crates/agent) (Ereignisse, Outbox, Senden) und [`tickly-platform`](../../crates/platform) (Systemzugriff).
+- `src/` – React: Kopplung, Status, Rückfrage „Arbeitest du gerade?“, Stoppen/Fortsetzen.
+
+## Entwickeln und bauen
+
+```sh
+npm install
+npm run dev                 # nur die Oberfläche im Browser (mit Beispieldaten): http://localhost:1420/?track=asking
+npx tauri dev               # komplette App
+npx tauri build             # Installer: .app/.dmg (macOS), .msi/.exe (Windows)
+```
+
+Unbeaufsichtigte Einrichtung: `TICKLY_PAIR="zeit.example.com|ABCD-EFGH"` koppelt beim ersten Start ohne Eingabe.
+
+Installer für beide Systeme entstehen beim Release (`.github/workflows/release.yml`, Tag `v…`) oder manuell über `.github/workflows/companion.yml`. Anleitung für Benutzer: [docs/COMPANION.md](../../docs/COMPANION.md).
+
+## Verhalten
+
+- **Fenster schließen (✕)** versteckt nur das Fenster. **Beenden** (Tray, Cmd+Q) stoppt die Zeiterfassung und setzt das Arbeitsende.
+- **Herunterfahren/Neustart** meldet der Companion als `shutdown`: Das Tracking wird nach dem nächsten Start fortgesetzt.
+- **Offline:** Ereignisse liegen in `outbox.json` (Datenordner der App) und werden mit steigenden Abständen erneut gesendet. Die Nummern (`seq`) steigen immer weiter; der Server ignoriert Wiederholungen.
+- **Sperre** wird auf macOS über die Sitzungsdaten (`CGSSessionScreenIsLocked`), auf Windows über den Secure Desktop erkannt. Ein Ruhezustand zählt wie eine Sperre.
+- **Aktive App:** nur der Name, nie Fenstertitel. Apps aus der Liste „Ausgeschlossene Apps“ gehen als „Sonstiges“ raus.
+- **Autostart** folgt der Einstellung in der Weboberfläche („Mit Windows/macOS starten“).
+- Datenschutz: Das Token liegt im Schlüsselbund (macOS) bzw. in der Anmeldeinformationsverwaltung (Windows). Nur wenn das nicht verfügbar ist, in einer Datei, die nur der Benutzer lesen kann.
+
+## Rechte
+
+macOS braucht keine Zusatzrechte: Der Name der aktiven App und der Sperrzustand sind ohne „Bedienungshilfen“ oder „Bildschirmaufnahme“ lesbar.
+
+## Nicht getestet
+
+Der Windows-Teil (`crates/platform/src/win.rs`) wurde nur übersetzt, nicht auf Windows ausgeführt. Bitte vor dem Einsatz auf einem echten Rechner prüfen: aktive App, Sperre/Entsperren, Herunterfahren mit laufendem Tracking.

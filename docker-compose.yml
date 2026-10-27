@@ -1,0 +1,68 @@
+# Tickly – Backend + Weboberfläche + PostgreSQL. TLS und öffentlicher Zugang laufen über Cloudflare.
+#
+#   Lokal testen:        docker compose up --build            -> http://localhost:3000
+#   Mit Cloudflare:      docker compose --profile tunnel up -d --build
+#
+# Konfiguration über die Datei .env (Vorlage: .env.example).
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tickly
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD in der .env setzen}
+      POSTGRES_DB: tickly
+    volumes:
+      - tickly-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tickly -d tickly"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    # Kein veröffentlichter Port: nur der api-Dienst erreicht die Datenbank.
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://tickly:${DB_PASSWORD}@db:5432/tickly
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
+      WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-}
+      TICKLY_TZ: ${TICKLY_TZ:-Europe/Berlin}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_NAME: ${ADMIN_NAME:-Administrator}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      TICKLY_DEMO: ${TICKLY_DEMO:-0}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      TICKLY_SECRET: ${TICKLY_SECRET:-}
+      BACKUP_DIR: /backups
+      COMPANION_LATEST_VERSION: ${COMPANION_LATEST_VERSION:-}
+      LOG_RETENTION_DAYS: ${LOG_RETENTION_DAYS:-365}
+      RUST_LOG: ${RUST_LOG:-info}
+    volumes:
+      # Getrenntes Sicherungsverzeichnis. Eigenen Pfad per BACKUP_PATH, z. B. ein anderes Laufwerk (Verzeichnis muss für UID 65532 beschreibbar sein)
+      - ${BACKUP_PATH:-tickly-backups}:/backups
+    # Nur lokal erreichbar; öffentlich geht es ausschließlich über den Cloudflare-Tunnel.
+    ports:
+      - "127.0.0.1:${TICKLY_PORT:-3000}:3000"
+
+  # Cloudflare Tunnel: keine offenen Ports am Server nötig.
+  # Im Cloudflare-Dashboard den "Public Hostname" auf http://api:3000 zeigen lassen.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  tickly-db:
+  tickly-backups:

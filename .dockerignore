@@ -1,0 +1,8 @@
+target
+data
+.git
+.pgdata
+node_modules
+apps/companion
+*.md
+.env

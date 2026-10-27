@@ -1,0 +1,29 @@
+name: Tests
+on:
+  push:
+  pull_request:
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: tickly
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U tickly" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://tickly@localhost:5433/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+      - name: Tests (Kern, API mit PostgreSQL, Companion-Kern)
+        run: cargo test --workspace --locked
+      - name: Windows-Teil des Companion übersetzen
+        run: cargo check -p tickly-platform --target x86_64-pc-windows-msvc --locked

@@ -1,0 +1,10 @@
+/target
+/data
+.env
+.DS_Store
+.pgdata/
+node_modules/
+apps/companion/dist/
+apps/companion/src-tauri/target/
+apps/companion/src-tauri/gen/
+/release/

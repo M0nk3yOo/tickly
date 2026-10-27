@@ -1,0 +1,46 @@
+:root {
+  --brand: #4f46e5; --ink: #0b0b0b; --ink-2: #4a4a50; --muted: #8a8a92; --line: #e1e0d9; --bg: #fcfcfb; --surface-2: #f3f2ee;
+  --good: #0ca30c; --warn: #d68a00; --bad: #d03a3a; --pos: #0a7a3c; --neg: #c0392b;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 14px; color: var(--ink);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --brand: #6d65f2; --ink: #f2f2f0; --ink-2: #c4c4c8; --muted: #8e8e96; --line: #2d2d34; --bg: #17171b; --surface-2: #202026; --pos: #3ccb7b; --neg: #ef6b5e; }
+}
+:root[data-theme="dark"] { --brand: #6d65f2; --ink: #f2f2f0; --ink-2: #c4c4c8; --muted: #8e8e96; --line: #2d2d34; --bg: #17171b; --surface-2: #202026; --pos: #3ccb7b; --neg: #ef6b5e; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); }
+.shell { min-height: 100vh; display: flex; flex-direction: column; }
+.head { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.logo { width: 30px; height: 30px; border-radius: 8px; display: block; box-shadow: 0 2px 8px rgba(58, 47, 196, 0.28); }
+.body { padding: 18px; display: flex; flex-direction: column; gap: 16px; }
+h1 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.01em; }
+h2 { font-size: 16px; margin: 0 0 6px; }
+p { margin: 0; line-height: 1.45; }
+.muted { color: var(--muted); } .xs { font-size: 12px; }
+label { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
+input { font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); color: var(--ink); outline: none; }
+input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px color-mix(in oklab, var(--brand) 18%, transparent); }
+input.code { font-size: 22px; letter-spacing: 0.14em; text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
+.btn { font: inherit; font-weight: 600; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer; }
+.btn:hover { background: var(--surface-2); }
+.btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.danger { color: var(--bad); }
+.btn.sm { padding: 6px 10px; font-size: 12.5px; }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; } .grow { flex: 1; }
+.badge { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 99px; font-size: 12px; font-weight: 600; background: var(--surface-2); }
+.badge.good { color: var(--good); } .badge.warn { color: var(--warn); } .badge.bad { color: var(--bad); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; display: inline-block; }
+.big { font-size: 38px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; margin: 2px 0 8px; }
+.big .muted { font-size: 15px; font-weight: 500; }
+.pbar { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.pbar i { display: block; height: 100%; background: var(--brand); border-radius: 4px; transition: width 0.4s; }
+.kvs > div { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.kvs span { color: var(--ink-2); } .kvs b { font-variant-numeric: tabular-nums; }
+.pos { color: var(--pos); } .neg { color: var(--neg); }
+.callout { padding: 10px 12px; border-radius: 10px; font-size: 13px; border: 1px solid var(--line); background: var(--surface-2); display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.callout.warn { border-color: color-mix(in oklab, var(--warn) 45%, var(--line)); }
+.callout.bad { border-color: color-mix(in oklab, var(--bad) 45%, var(--line)); }
+.ask { padding: 14px; border-radius: 12px; border: 1px solid color-mix(in oklab, var(--warn) 50%, var(--line)); background: color-mix(in oklab, var(--warn) 10%, var(--bg)); display: flex; flex-direction: column; gap: 10px; }
+.foot { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; }

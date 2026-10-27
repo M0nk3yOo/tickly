@@ -1,0 +1,127 @@
+name: Release
+# Start: Tag `v0.9.0` pushen (oder manuell). Baut Companion-Installer, Docker-Image und legt eine GitHub-Release an.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: tickly
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U tickly" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://tickly@localhost:5433/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --locked
+      - run: cargo check -p tickly-platform --target x86_64-pc-windows-msvc --locked
+
+  companion:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            args: ""
+          - os: macos-latest
+            args: "--target universal-apple-darwin"
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: apps/companion
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/companion/src-tauri
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      # Signierung: Secrets (siehe docs/ENTWICKLUNG.md) setzen; ohne sie entstehen unsignierte Installer.
+      - run: npx tauri build ${{ matrix.args }}
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: companion-${{ matrix.os }}
+          path: |
+            apps/companion/src-tauri/target/**/release/bundle/msi/*.msi
+            apps/companion/src-tauri/target/**/release/bundle/nsis/*.exe
+            apps/companion/src-tauri/target/**/release/bundle/dmg/*.dmg
+
+  docker:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        run: |
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}
+            ${{ steps.meta.outputs.image }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  release:
+    needs: [companion, docker]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Prüfsummen und Release-Text
+        run: |
+          cd dist && find . -type f \( -name '*.msi' -o -name '*.exe' -o -name '*.dmg' \) -exec mv {} . \; 2>/dev/null || true
+          sha256sum *.msi *.exe *.dmg > SHA256SUMS
+          cd ..
+          v="${GITHUB_REF_NAME#v}"
+          awk -v v="## $v" 'index($0, v)==1 {on=1; next} /^## / {on=0} on' CHANGELOG.md > notes.md
+          { echo; echo "**Installation:** [docs/INSTALLATION.md](docs/INSTALLATION.md) · **Companion:** [docs/COMPANION.md](docs/COMPANION.md)"; echo; echo "Docker-Image: \`ghcr.io/${GITHUB_REPOSITORY,,}:$v\`"; echo; echo "> Die Installer sind nicht signiert (siehe docs/COMPANION.md)."; } >> notes.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: notes.md
+          files: |
+            dist/*.msi
+            dist/*.exe
+            dist/*.dmg
+            dist/SHA256SUMS

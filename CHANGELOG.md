@@ -1,0 +1,17 @@
+# Änderungen
+
+## 0.9.0 – Erste Veröffentlichung
+
+Funktionsumfang:
+
+- **Erfassung:** Companion-App für Windows und macOS (Tauri) mit Arbeitsbeginn, Sperre/Ruhezustand, aktiver App, Neustart-Fortsetzung, Absturz-Erkennung, Rückfrage „Arbeitest du gerade?“, automatischem Start per Zeitfenster, Stoppen/Fortsetzen (auch in der Weboberfläche) und **Offline-Betrieb** mit späterer Übertragung.
+- **Berechnung:** Soll je Wochentag, Brutto/Netto, automatische Pausenregeln, Feiertage je Bundesland, Urlaub/Krankheit/Zeitausgleich, eigene freie Tage, Überstunden je Woche/Monat/gesamt, Prognose, Übertrag bei der Registrierung.
+- **Auswertung:** Tagesansicht mit Zeitverlauf und Programmwechseln, Wochen-/Monats-/Jahresstatistik (Arbeitszeit ohne Pausen je Tag), App-Rangliste mit Symbolen, CSV-Export, Hell/Dunkel/System.
+- **Nachträglich bearbeiten** und manuell ergänzen, mit Protokoll und einstellbarem Zeitraum.
+- **Benutzer:** offene oder geschlossene Registrierung, Freigabe, Einladungen, E-Mail-Bestätigung, Passwort zurücksetzen/ändern, Passwortrichtlinie.
+- **Anmeldung:** Passkeys, Authenticator-App (TOTP) mit Wiederherstellungscodes, **MFA-Pflicht mit Karenzzeit**, einstellbare Sitzungsdauer.
+- **Betrieb:** PostgreSQL, Docker/Compose, Cloudflare-Tunnel, echte Client-IP hinter Proxy, **Protokoll**, **automatische IP-Sperren** mit Entsperren, Sitzungen und Geräte (IP, Land, Version) für Administratoren, **SMTP per Oberfläche**, **Sicherung/Wiederherstellung** mit Zeitplan, getrenntem Verzeichnis und Verschlüsselung (`TICKLY_SECRET`).
+
+Lizenz: MIT.
+
+Bekannte Grenzen siehe [README](README.md#bekannte-grenzen): Windows-Companion nicht auf Windows getestet, Installer unsigniert, Docker-Image in dieser Umgebung nicht gebaut.
