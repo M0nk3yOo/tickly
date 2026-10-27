@@ -1,5 +1,12 @@
 # Änderungen
 
+## 0.9.1
+
+Erste veröffentlichte Version; Funktionsumfang wie unter 0.9.0 beschrieben (0.9.0 wurde nie veröffentlicht).
+
+- Release-Workflow: ohne Apple-Zertifikat werden unsignierte macOS-Installer gebaut, statt am Signieren zu scheitern.
+- Prototyp entfernt.
+
 ## 0.9.0 – Erste Veröffentlichung
 
 Funktionsumfang:
