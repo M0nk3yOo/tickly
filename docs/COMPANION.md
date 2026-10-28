@@ -13,7 +13,17 @@ Die Installer stehen bei den **Release-Dateien** des Projekts (GitHub → *Relea
 | Windows | `Tickly Companion_<Version>_x64-setup.exe` oder `….msi` |
 | macOS | `Tickly Companion_<Version>_universal.dmg` (Apple Silicon und Intel) |
 
-**Hinweis zu unsignierten Installern:** Windows zeigt *SmartScreen* („Der Computer wurde durch Windows geschützt“) → *Weitere Informationen* → *Trotzdem ausführen*. Auf dem Mac beim ersten Start mit Rechtsklick auf die App → *Öffnen* (oder *Systemeinstellungen → Datenschutz & Sicherheit → Trotzdem öffnen*). Mit Zertifikat bzw. Apple-Developer-ID entfällt das (siehe [Entwicklung](ENTWICKLUNG.md)).
+**Hinweis zu unsignierten Installern:** Die Installer sind nicht signiert. Prüfe vorher die Prüfsumme (`SHA256SUMS` aus dem Release: `shasum -a 256 <Datei>` auf dem Mac, `certutil -hashfile <Datei> SHA256` unter Windows).
+
+- **Windows:** *SmartScreen* („Der Computer wurde durch Windows geschützt“) → *Weitere Informationen* → *Trotzdem ausführen*.
+- **macOS:** Beim Start kommt „Tickly Companion nicht geöffnet – Apple konnte nicht überprüfen, ob … frei von Schadsoftware ist“. **Nicht** „In den Papierkorb legen“ wählen, sondern *Fertig*. Dann:
+  1. Die App aus dem DMG in den Ordner *Programme* ziehen.
+  2. Entweder *Systemeinstellungen → Datenschutz & Sicherheit*, nach unten blättern, bei „Tickly Companion wurde blockiert“ auf **Trotzdem öffnen** klicken (erscheint erst nach dem ersten Startversuch) und mit Passwort bestätigen,
+  3. oder im Terminal die Sperre für diese App aufheben: `xattr -dr com.apple.quarantine "/Applications/Tickly Companion.app"` und die App dann normal starten.
+
+  Das „Rechtsklick → Öffnen“ aus älteren macOS-Versionen funktioniert in neueren nicht mehr.
+
+Mit einer Apple-Developer-ID und Notarisierung entfällt das (siehe [Entwicklung](ENTWICKLUNG.md)).
 
 macOS braucht **keine** Zusatzrechte (weder „Bedienungshilfen“ noch „Bildschirmaufnahme“): Der Name der aktiven App und der Sperrzustand sind ohne sie lesbar.
 
