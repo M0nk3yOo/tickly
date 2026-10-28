@@ -21,7 +21,9 @@
 - **Passwort** mit Richtlinie: mind. 14 Zeichen, Groß-/Klein, Zahl, Sonderzeichen. Optional **TOTP** als zweiter Faktor mit 10 Wiederherstellungscodes. Der Administrator kann **MFA verpflichtend** machen (Karenzzeit, 24-Stunden-Sitzungen, danach Einrichtungszwang).
 - **Sitzungen** per `HttpOnly`-Cookie (`SameSite=Lax`, `Secure` bei HTTPS), serverseitig gespeichert, beendbar, einstellbare Dauer.
 - **Schutz vor Raten:** automatische IP-Sperre, Begrenzung der TOTP-Versuche (10 je Benutzer, 5 je Anmeldeticket), jeder TOTP-Code gilt nur einmal, Kopplungscodes (8 Zeichen, 10 Minuten, einmalig) und Reset-/Bestätigungslinks (zufällige 256-Bit-Token, nur als Hash gespeichert, einmalig, 1 h bzw. 48 h).
-- Antworten bei „Passwort vergessen“ und Anmeldung verraten nicht, ob ein Konto existiert.
+- Antworten bei „Passwort vergessen“ und Anmeldung verraten nicht, ob ein Konto existiert (für unbekannte Adressen kommen stabile Scheinfragen). Die Registrierung nennt bereits vergebene Adressen; eine eigene Sicherheitsfrage kann ebenfalls auf ein Konto hindeuten.
+- **Sicherheitsfragen** (Passwort selbst zurücksetzen) sind ein bewusst schwächerer Weg: Antworten lassen sich erraten oder recherchieren. Deshalb: drei Fragen, alle müssen stimmen; Antworten stehen nur als Argon2-Hash in der Datenbank; 5 Fehlversuche je Konto und Stunde sperren den Weg (das kann ein Angreifer ausnutzen, um den Weg für ein Opfer zu blockieren, der Link per Mail und die Anmeldung bleiben davon unberührt), zusätzlich die IP-Sperre; ein Reset beendet alle Sitzungen, ändert aber **nie** Passkey oder TOTP; der Benutzer bekommt eine Mail. Administratoren können den Weg abschalten.
+- **Initialpasswort:** Ein Administrator kann ein Passwort setzen. Es gilt nur bis zur ersten Passwort-Anmeldung: Die Sitzung ist gesperrt, bis der Benutzer ein eigenes festlegt.
 
 ## Verschlüsselung ruhender Daten
 

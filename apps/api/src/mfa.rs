@@ -144,7 +144,7 @@ async fn login_second_step(State(app): St, h: HeaderMap, Extension(ip): Extensio
     app.mfa_tickets.lock().unwrap().remove(&r.ticket);
     let reg = db::reg_policy(&app.pool).await?;
     let secs = db::session_secs(&reg, &db::mfa_status_with(&u, 0, &reg));
-    let sid = db::create_session(&app.pool, &u.id, false, secs, &ip, &netsec::ua(&h)).await?;
+    let sid = db::create_session(&app.pool, &u.id, false, u.must_change_pw, secs, &ip, &netsec::ua(&h)).await?;
     db::touch_user(&app.pool, &u.id).await;
     let secure = if app.cfg.secure_cookie { "; Secure" } else { "" };
     Ok(([(header::SET_COOKIE, format!("tickly_sid={sid}; Path=/; HttpOnly; SameSite=Lax; Max-Age={secs}{secure}"))], Json(json!({ "ok": true, "me": db::me_json(&u) }))).into_response())

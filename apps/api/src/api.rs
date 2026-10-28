@@ -58,7 +58,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/admin/users/{id}", put(admin_update).delete(admin_delete))
         .route("/admin/users/{id}/status", post(admin_status))
         .route("/admin/users/{id}/reset-passkeys", post(admin_reset_passkeys));
-    let api = api.merge(crate::backup::routes()).merge(crate::mfa::routes()).merge(crate::netsec::routes()).merge(crate::sessions::routes()).merge(crate::edit::routes()).merge(crate::mail::routes());
+    let api = api.merge(crate::backup::routes()).merge(crate::mfa::routes()).merge(crate::secq::routes()).merge(crate::netsec::routes()).merge(crate::sessions::routes()).merge(crate::edit::routes()).merge(crate::mail::routes());
     Router::new()
         .nest("/api", api)
         .fallback_service(web)
@@ -85,24 +85,26 @@ fn cookie(app: &App, sid: &str, max_age: i64) -> (header::HeaderName, String) {
 }
 
 /// Neue Sitzung für ein Konto; die Dauer hängt von der Richtlinie ab (ohne MFA unter Pflicht: 24 Stunden).
-async fn start_session(app: &App, u: &UserRow, limited: bool, ip: &ClientIp, h: &HeaderMap) -> Res<(header::HeaderName, String)> {
+async fn start_session(app: &App, u: &UserRow, limited: bool, pw_change: bool, ip: &ClientIp, h: &HeaderMap) -> Res<(header::HeaderName, String)> {
     let reg = db::reg_policy(&app.pool).await?;
     let m = db::mfa_status(&app.pool, u, &reg).await?;
     let secs = db::session_secs(&reg, &m);
-    let sid = db::create_session(&app.pool, &u.id, limited, secs, ip, &netsec::ua(h)).await?;
+    let sid = db::create_session(&app.pool, &u.id, limited, pw_change, secs, ip, &netsec::ua(h)).await?;
     Ok(cookie(app, &sid, secs))
 }
 
 /// Prüft die Sitzung und liefert den Benutzer. Eingeschränkte Sitzungen nur, wenn `allow_limited`.
 pub async fn auth(app: &App, h: &HeaderMap, allow_limited: bool) -> Res<UserRow> {
     let Some(sid) = sid_from(h) else { return unauthorized("Nicht angemeldet") };
-    let s: Option<(String, bool, chrono::DateTime<Utc>)> = sqlx::query_as("SELECT user_id, limited, created_at FROM sessions WHERE id = $1 AND expires_at > now()").bind(&sid).fetch_optional(&app.pool).await?;
-    let Some((uid, limited, created)) = s else { return unauthorized("Sitzung abgelaufen") };
+    let s: Option<(String, bool, chrono::DateTime<Utc>, bool)> = sqlx::query_as("SELECT user_id, limited, created_at, pw_change FROM sessions WHERE id = $1 AND expires_at > now()").bind(&sid).fetch_optional(&app.pool).await?;
+    let Some((uid, limited, created, pw_change)) = s else { return unauthorized("Sitzung abgelaufen") };
     let Some(u) = db::user_by_id(&app.pool, &uid).await? else { return unauthorized("Benutzer existiert nicht mehr") };
     let _ = sqlx::query("UPDATE sessions SET last_seen_at = now() WHERE id = $1 AND last_seen_at < now() - interval '1 minute'").bind(&sid).execute(&app.pool).await;
     let ok = u.status == "active" || (allow_limited && limited && u.status == "pending");
     if !ok { return forbidden("Konto ist nicht aktiv") }
     if limited && !allow_limited { return forbidden("Konto wartet auf Freigabe") }
+    // Initialpasswort eines Administrators: bis zur Änderung geht nichts anderes
+    if pw_change && u.must_change_pw && !allow_limited { return forbidden("Bitte lege zuerst ein neues Passwort fest.") }
     if u.status == "active" {
         let reg = db::reg_policy(&app.pool).await?;
         if reg.mfa_required {
@@ -145,6 +147,7 @@ async fn config(State(app): St) -> Res<Json<Value>> {
         "demoHint": app.cfg.demo && app.cfg.demo_password == DEFAULT_DEMO_PASSWORD,
         // Noch kein Benutzer: Die Oberfläche zeigt die Ersteinrichtung
         "setup": app.setup_code.lock().unwrap().is_some(),
+        "secQuestions": reg.sec_questions, "questionList": crate::secq::QUESTIONS,
     })))
 }
 
@@ -153,8 +156,9 @@ async fn session(State(app): St, h: HeaderMap) -> Res<Json<Value>> {
         Ok(u) => {
             let reg = db::reg_policy(&app.pool).await?;
             let m = db::mfa_status(&app.pool, &u, &reg).await?;
-            // „Eingeschränkt“: Konto wartet auf Freigabe oder die Karenzzeit für MFA ist vorbei
-            let (limited, reason) = if u.status != "active" { (true, "approval") } else if m.expired { (true, "mfa") } else { (false, "") };
+            let pw_change = u.must_change_pw && match sid_from(&h) { Some(sid) => sqlx::query_scalar::<_, bool>("SELECT pw_change FROM sessions WHERE id = $1").bind(sid).fetch_optional(&app.pool).await?.unwrap_or(false), None => false };
+            // „Eingeschränkt“: Konto wartet auf Freigabe, ein Initialpasswort ist zu ändern oder die Karenzzeit für MFA ist vorbei
+            let (limited, reason) = if u.status != "active" { (true, "approval") } else if pw_change { (true, "password") } else if m.expired { (true, "mfa") } else { (false, "") };
             json!({ "loggedIn": true, "limited": limited, "reason": reason, "me": db::me_json(&u), "mfa": m.json() })
         }
         Err(ApiError(StatusCode::INTERNAL_SERVER_ERROR, m)) => return err(StatusCode::INTERNAL_SERVER_ERROR, m),
@@ -210,7 +214,7 @@ async fn login(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientIp>,
         netsec::log(&app, "login", true, ip, &h, Some(&u.id), Some(&u.email), "Passwort richtig, zweiter Faktor folgt").await;
         return Ok(Json(json!({ "ok": true, "needsTotp": true, "ticket": crate::mfa::issue_ticket(&app, &u.id) })).into_response());
     }
-    let c = start_session(&app, &u, false, &ip, &h).await?;
+    let c = start_session(&app, &u, false, u.must_change_pw, &ip, &h).await?;
     db::touch_user(&app.pool, &u.id).await;
     netsec::log(&app, "login", true, ip, &h, Some(&u.id), Some(&u.email), "Passwort").await;
     Ok(([c], Json(json!({ "ok": true, "me": db::me_json(&u) }))).into_response())
@@ -224,7 +228,7 @@ async fn logout(State(app): St, h: HeaderMap) -> Res<Response> {
 }
 
 #[derive(Deserialize)]
-struct SetupReq { code: String, name: String, email: String, password: String }
+struct SetupReq { code: String, name: String, email: String, password: String, #[serde(default)] questions: Vec<crate::secq::Qa> }
 
 /// Ersteinrichtung: legt den ersten Administrator an. Erfordert den Einrichtungscode aus dem Server-Protokoll.
 async fn setup(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientIp>, Json(r): Json<SetupReq>) -> Res<Response> {
@@ -240,16 +244,19 @@ async fn setup(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientIp>,
     if name.is_empty() { return bad("Bitte Namen eingeben") }
     if !valid_email(&email) { return bad("Bitte gültige E-Mail-Adresse eingeben") }
     if let Some(m) = password_problem(&r.password, MIN_PW) { return bad(m) }
+    // Sicherheitsfragen sind in einer neuen Installation standardmäßig an
+    if db::reg_policy(&app.pool).await?.sec_questions { crate::secq::validate(&r.questions).map_err(|m| ApiError(StatusCode::BAD_REQUEST, m))?; }
     let Some(id) = db::create_first_admin(&app, &name, &email, &r.password).await? else { return conflict("Die Einrichtung ist bereits abgeschlossen. Bitte melde dich an.") };
+    if r.questions.len() == crate::secq::SLOTS { crate::secq::store(&app.pool, &id, &r.questions).await?; }
     netsec::log(&app, "setup", true, ip, &h, Some(&id), Some(&email), "Administrator bei der Einrichtung angelegt").await;
     tracing::info!("Administrator {email} bei der Einrichtung angelegt");
     let me = db::user_by_id(&app.pool, &id).await?.expect("Konto");
-    let c = start_session(&app, &me, false, &ip, &h).await?;
+    let c = start_session(&app, &me, false, false, &ip, &h).await?;
     Ok(([c], Json(json!({ "ok": true }))).into_response())
 }
 
 #[derive(Deserialize)]
-struct RegisterReq { name: String, email: String, password: Option<String>, #[serde(rename = "startBal")] start_bal: Option<f64> }
+struct RegisterReq { name: String, email: String, password: Option<String>, #[serde(rename = "startBal")] start_bal: Option<f64>, #[serde(default)] questions: Vec<crate::secq::Qa> }
 
 async fn register(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientIp>, Json(r): Json<RegisterReq>) -> Res<Response> {
     netsec::guard(&app, ip).await?;
@@ -264,11 +271,17 @@ async fn register(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientI
     if let Some(pw) = &r.password {
         if let Some(m) = password_problem(pw, reg.min_pw) { return bad(m) }
     }
+    // Mit Passwort und eingeschalteten Sicherheitsfragen gehören drei Fragen dazu (Grundlage für „Passwort vergessen“)
+    let with_questions = reg.sec_questions && r.password.is_some();
     // Überstunden-Stand zu Beginn (Stunden): 0 = mit der Messung neu beginnen
     let start_bal = r.start_bal.unwrap_or(0.0);
     if !start_bal.is_finite() || start_bal.abs() > 2000.0 { return bad("Der Übertrag muss zwischen −2000 und +2000 Stunden liegen") }
     let hash = r.password.as_deref().map(hash_password);
     let existing = db::user_by_email(&app.pool, &email).await?;
+    // Erst prüfen, wenn die Registrierung für diese Adresse überhaupt möglich ist (sonst meldet sie „geschlossen“ bzw. „vergeben“)
+    if with_questions && (existing.as_ref().is_some_and(|u| u.status == "invited") || (existing.is_none() && reg.open)) {
+        crate::secq::validate(&r.questions).map_err(|m| ApiError(StatusCode::BAD_REQUEST, m))?;
+    }
     let (id, status) = match existing {
         // Einladung annehmen: Konto wird ohne weitere Freigabe aktiv.
         Some(u) if u.status == "invited" => {
@@ -287,6 +300,7 @@ async fn register(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientI
             (id, status.to_string())
         }
     };
+    if with_questions { crate::secq::store(&app.pool, &id, &r.questions).await?; }
     netsec::log(&app, "register", true, ip, &h, Some(&id), Some(&email), if status == "active" { "Konto angelegt" } else { "Konto angelegt, wartet auf Freigabe" }).await;
     let me = db::user_by_id(&app.pool, &id).await?.expect("Konto");
     // Mit eingeschalteter Bestätigung gibt es erst nach Klick auf den Link in der Mail eine Sitzung
@@ -295,7 +309,7 @@ async fn register(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientI
         return Ok(Json(json!({ "ok": true, "status": "verify" })).into_response());
     }
     crate::mail::registration_ready(&app, &me).await;
-    let c = start_session(&app, &me, status != "active", &ip, &h).await?;
+    let c = start_session(&app, &me, status != "active", false, &ip, &h).await?;
     Ok(([c], Json(json!({ "ok": true, "status": status }))).into_response())
 }
 
@@ -366,7 +380,7 @@ async fn pk_login_finish(State(app): St, h: HeaderMap, Extension(ip): Extension<
     }
     db::touch_user(&app.pool, &uid).await;
     netsec::log(&app, "passkey", true, ip, &h, Some(&uid), Some(&u.email), "Passkey").await;
-    let c = start_session(&app, &u, false, &ip, &h).await?;
+    let c = start_session(&app, &u, false, false, &ip, &h).await?;
     Ok(([c], Json(json!({ "ok": true, "me": db::me_json(&u) }))).into_response())
 }
 
@@ -472,6 +486,7 @@ async fn snapshot_json(app: &App, u: &UserRow, today: NaiveDate, now: f64) -> Re
     let reg = db::reg_policy(&app.pool).await?;
     v["mfa"] = db::mfa_status(&app.pool, u, &reg).await?.json();
     v["limits"] = json!({ "editDaysBack": reg.edit_days_back });
+    v["secQ"] = crate::secq::status(app, u).await?;
     v["totp"] = json!({ "enabled": u.totp_enabled, "recoveryLeft": if u.totp_enabled { crate::mfa::recovery_left(app, &u.id).await? } else { 0 } });
     if u.role == "admin" {
         let labels = today_labels(app, today).await?;
@@ -483,7 +498,7 @@ async fn snapshot_json(app: &App, u: &UserRow, today: NaiveDate, now: f64) -> Re
             users.push(json!({
                 "mfa": if x.status == "active" { json!({ "required": xm.required, "compliant": xm.compliant, "deadline": xm.deadline, "expired": xm.expired }) } else { Value::Null },
                 "id": x.id, "name": x.name, "email": x.email, "role": x.role, "status": x.status, "passkeys": pk,
-                "totp": x.totp_enabled, "startBal": x.settings.start_bal, "week": db::week_hours(&x.settings), "bal": bal, "last": db::last_label(&x, now_utc),
+                "totp": x.totp_enabled, "mustChangePw": x.must_change_pw, "startBal": x.settings.start_bal, "week": db::week_hours(&x.settings), "bal": bal, "last": db::last_label(&x, now_utc),
                 "today": labels.get(&x.id).cloned().unwrap_or_else(|| "none".into()),
             }));
         }

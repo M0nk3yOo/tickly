@@ -2,6 +2,10 @@
 
 ## Unveröffentlicht
 
+- **Passwort zurücksetzen per Sicherheitsfragen:** Bei der Registrierung (und bei der Einrichtung) wählt man drei Fragen aus Vorschlägen oder eigene; unter „Passwort vergessen“ lässt sich das Passwort damit selbst zurücksetzen. Alle Antworten müssen stimmen (Groß-/Kleinschreibung, Leer- und Satzzeichen egal), nur als Hash gespeichert, Sperre nach 5 Fehlversuchen je Konto, IP-Sperre, Hinweis-Mail, alle Sitzungen enden, der zweite Faktor bleibt. Bestehende Konten werden per Hinweis zum Festlegen aufgefordert; Fragen sind unter Einstellungen änderbar. Administratoren können den Weg abschalten (Registrierung & Richtlinien). Sicherungen enthalten die Antworten.
+- **Initialpasswort durch Administratoren:** „Neues Passwort setzen“ in der Benutzerverwaltung (eigenes oder zufällig erzeugt). Der Benutzer muss es beim nächsten Passwort-Login ändern, bis dahin ist die Sitzung gesperrt. Ersetzt die bisherige Attrappe „Passwort-Reset senden“.
+- Fehlerbehebung: In der Benutzerverwaltung wurde der „Selbst“-Schutz fest auf das Demo-Konto bezogen.
+- Fehlerbehebung: Ein falsches Passwort beim Ändern meldete fälschlich „Sitzung abgelaufen“.
 - **Ersteinrichtung im Browser:** Der erste Administrator wird nicht mehr über `ADMIN_EMAIL`/`ADMIN_PASSWORD` in der Compose-Datei angelegt, sondern beim ersten Aufruf in der Weboberfläche. Ein Einrichtungscode aus dem Server-Protokoll schützt davor, dass ein Fremder die Einrichtung zuerst abschließt. Bis dahin ist die Registrierung gesperrt. (`ADMIN_EMAIL`/`ADMIN_PASSWORD` funktionieren für Skripte weiterhin, stehen aber nicht mehr in Compose und `.env.example`.)
 - **`RUN_AS`:** Benutzer (uid:gid) des Server-Containers einstellbar, damit Sicherungen im eigenen Verzeichnis dem eigenen Benutzer gehören.
 - **`DB_PATH`:** Das Datenverzeichnis der Datenbank lässt sich in der `.env` auf einen eigenen Pfad legen (Standard bleibt das Docker-Volume).

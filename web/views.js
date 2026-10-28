@@ -180,6 +180,38 @@ function authArt() {
 /* Pflicht zu Passkey/Authenticator-App: Hinweis, Erinnerung beim Anmelden und Sperrseite nach Ablauf der Karenzzeit */
 const daysText = n => n <= 0 ? 'heute ist der letzte Tag' : `noch ${n} Tag${n === 1 ? '' : 'e'}`;
 const mfaDate = m => m && m.deadline ? dMid(fmtD(new Date(m.deadline))) : '';
+/* Sicherheitsfragen: drei Fragen mit Antworten (Registrierung, Einrichtung, Einstellungen) */
+function secQForm(prefix) {
+  const list = S.questionList || [], start = [0, 4, 8];
+  return `<div class="f"><span style="font-size:12.5px;color:var(--ink-2);font-weight:550">Sicherheitsfragen</span>
+    <span class="hint">Damit kannst du dein Passwort selbst zurücksetzen, wenn du es vergisst. Wähle drei verschiedene Fragen, die nur du beantworten kannst. Groß-/Kleinschreibung und Satzzeichen spielen keine Rolle.</span>
+    ${[1, 2, 3].map(i => `<div class="sq"><select id="${prefix}-q${i}" data-sq="1">${list.map((q, k) => `<option value="${esc(q)}" ${k === start[i - 1] ? 'selected' : ''}>${esc(q)}</option>`).join('')}<option value="__own">Eigene Frage …</option></select>
+      <input type="text" id="${prefix}-c${i}" placeholder="Eigene Frage (8 bis 120 Zeichen)" maxlength="120" style="display:none" autocomplete="off">
+      <input type="text" id="${prefix}-a${i}" placeholder="Antwort" maxlength="100" autocomplete="off"></div>`).join('')}</div>`;
+}
+function readSecQ(prefix) {
+  return [1, 2, 3].map(i => { let q = $(`#${prefix}-q${i}`).value; if (q === '__own') q = $(`#${prefix}-c${i}`).value.trim(); return { question: q, answer: $(`#${prefix}-a${i}`).value.trim() }; });
+}
+function secQProblem(list) {
+  if (list.some(x => !x.question)) return 'Bitte alle drei Fragen wählen';
+  if (new Set(list.map(x => x.question.toLowerCase())).size < 3) return 'Bitte drei verschiedene Fragen wählen';
+  if (list.some(x => x.answer.replace(/[^\p{L}\p{N}]/gu, '').length < 3)) return 'Jede Antwort braucht mindestens 3 Buchstaben oder Ziffern';
+  if (new Set(list.map(x => x.answer.toLowerCase().replace(/[^\p{L}\p{N}]/gu, ''))).size < 3) return 'Bitte drei verschiedene Antworten geben';
+  return '';
+}
+function secqBanner() {
+  const q = S.secQ; if (S.demo || !q || !q.enabled || !q.hasPassword || q.set) return '';
+  return `<div class="mfa-banner">${ic('shield', 20)}<div class="grow"><b>Lege Sicherheitsfragen fest.</b> Damit kannst du dein Passwort selbst zurücksetzen, falls du es vergisst.</div><button class="btn sm primary" data-a="secqOpen">Jetzt festlegen</button></div>`;
+}
+function vPwGate() {
+  return `<div class="auth">${authArt()}<div class="auth-form"><div class="auth-box">
+    <div><h1>Neues Passwort festlegen</h1><p class="muted" style="margin-top:4px">Ein Administrator hat dein Passwort zurückgesetzt. Lege jetzt ein eigenes fest, dann geht es sofort weiter.</p></div>
+    <label class="f">Neues Passwort<input type="password" id="rs-pw" autocomplete="new-password" autofocus></label><div class="pwrules" id="pw-rules">${pwRulesHtml('')}</div>
+    <label class="f">Passwort wiederholen<input type="password" id="rs-pw2" autocomplete="new-password"></label>
+    <button class="btn primary lg block" data-a="pwRequired">Passwort speichern</button>
+    <p class="sm" style="text-align:center"><a href="#/login" data-a="logout" style="color:var(--brand);font-weight:600">Abmelden</a></p>
+  </div></div></div>`;
+}
 function mfaBanner() {
   const m = S.mfa; if (!m || !m.required || m.compliant) return '';
   return `<div class="mfa-banner">${ic('shield', 20)}<div class="grow"><b>Bitte sichere dein Konto ab.</b> Dein Administrator verlangt einen Passkey oder eine Authenticator-App – ${daysText(m.daysLeft)} (bis ${mfaDate(m)}). Bis dahin gilt deine Anmeldung nur 24 Stunden.</div><button class="btn sm primary" data-a="mfaGo">Jetzt einrichten</button></div>`;
@@ -203,10 +235,19 @@ function vLoginTotp() {
   </div></div></div>`;
 }
 function vForgot() {
+  const q = S.fq;
+  const back = `<p class="sm" style="text-align:center"><a href="#/login" style="color:var(--brand);font-weight:600">${ic('chevL', 14)} Zurück zur Anmeldung</a></p>`;
+  if (q) return `<div class="auth">${authArt()}<div class="auth-form"><div class="auth-box">
+    <div><h1>Sicherheitsfragen</h1><p class="muted" style="margin-top:4px">Beantworte alle drei Fragen so, wie du sie bei der Registrierung angegeben hast, und lege dann ein neues Passwort fest.</p></div>
+    ${q.questions.map((t, i) => `<label class="f">${esc(t)}<input type="text" id="fq-a${i + 1}" autocomplete="off" maxlength="100"></label>`).join('')}
+    <label class="f">Neues Passwort<input type="password" id="rs-pw" autocomplete="new-password"></label><div class="pwrules" id="pw-rules">${pwRulesHtml('')}</div>
+    <button class="btn primary lg block" data-a="fqSave">Passwort ändern</button>
+    <p class="sm" style="text-align:center"><a href="#/forgot" data-a="fqBack" style="color:var(--brand);font-weight:600">${ic('chevL', 14)} Zurück</a></p></div></div></div>`;
   return `<div class="auth">${authArt()}<div class="auth-form"><div class="auth-box">
-    <div><h1>Passwort vergessen?</h1><p class="muted" style="margin-top:4px">Gib deine E-Mail-Adresse ein. Wir schicken dir einen Link, mit dem du ein neues Passwort festlegst.</p></div>
+    <div><h1>Passwort vergessen?</h1><p class="muted" style="margin-top:4px">Gib deine E-Mail-Adresse ein. Wir schicken dir einen Link, mit dem du ein neues Passwort festlegst.${S.reg.secQuestions ? ' Oder beantworte deine Sicherheitsfragen.' : ''}</p></div>
     ${S.forgotSent ? `<div class="callout info">${ic('mail')}<span>${S.forgotMail === false ? 'Der E-Mail-Versand ist auf diesem Server nicht eingerichtet. Bitte wende dich an einen Administrator.' : 'Wenn es zu dieser Adresse ein Konto gibt, ist eine Mail unterwegs. Der Link ist eine Stunde gültig.'}</span></div>` : `<label class="f">E-Mail<input type="email" id="fg-mail" autocomplete="username" autofocus></label><button class="btn primary lg block" data-a="forgotSend">Link senden</button>`}
-    <p class="sm" style="text-align:center"><a href="#/login" style="color:var(--brand);font-weight:600">${ic('chevL', 14)} Zurück zur Anmeldung</a></p></div></div></div>`;
+    ${S.reg.secQuestions && !S.forgotSent ? `<div class="divider">oder</div><button class="btn lg block" data-a="fqStart">${ic('shield', 18)} Mit Sicherheitsfragen zurücksetzen</button>` : ''}
+    ${back}</div></div></div>`;
 }
 function vReset() {
   return `<div class="auth">${authArt()}<div class="auth-form"><div class="auth-box">
@@ -247,6 +288,7 @@ function vSetup() {
     <label class="f">Passwort<input type="password" id="rg-pw" autocomplete="new-password" placeholder="Mindestens ${S.reg.minPw} Zeichen"></label>
     <div class="pwrules" id="pw-rules">${pwRulesHtml('')}</div>
     <label class="f">Passwort wiederholen<input type="password" id="su-pw2" autocomplete="new-password"></label>
+    ${S.reg.secQuestions ? secQForm('sq') : ''}
     <div class="callout info">${ic('info')}<span>Lange Passwörter sind besser. Ein Passwortmanager erzeugt und speichert sie für dich. Danach kannst du in den Einstellungen einen Passkey oder TOTP einrichten.</span></div>
     <button class="btn primary lg block" data-a="setupSave">Administrator anlegen</button>
   </div></div></div>`;
@@ -263,6 +305,7 @@ function vRegister() {
     <label class="f">E-Mail${S.reg.domains ? ` <span class="muted" style="font-weight:400">(nur ${esc(S.reg.domains)})</span>` : ''}<input type="email" id="rg-mail" placeholder="max@firma.de"></label>
     <label class="f">Passwort<input type="password" id="rg-pw" autocomplete="new-password" placeholder="Mindestens ${S.reg.minPw} Zeichen"></label>
     <div class="pwrules" id="pw-rules">${pwRulesHtml('')}</div>
+    ${S.reg.secQuestions ? secQForm('sq') : ''}
     <div class="f"><span style="font-size:12.5px;color:var(--ink-2);font-weight:550">Überstunden zu Beginn</span>
       <label class="chk"><input type="radio" name="rg-bal" value="fresh" checked>Neu beginnen – mit 0 Stunden starten</label>
       <div class="row" style="gap:8px"><label class="chk"><input type="radio" name="rg-bal" value="carry">Stand mitnehmen:</label><input type="text" id="rg-carry" inputmode="decimal" placeholder="z. B. 12,5 oder −3" style="width:150px"><span class="muted">Stunden</span></div>
@@ -717,6 +760,10 @@ function vSettings() {
       <div class="stack gap-s">${S.passkeys.map(p => `<div class="pk"><span class="pi">${ic('fp', 22)}</span><div class="grow"><b>${esc(p.name)}</b><br><span class="xs muted">Erstellt ${p.created} · zuletzt genutzt ${p.last}</span></div><button class="ibtn" data-a="pkRename" data-id="${p.id}" title="Umbenennen">${ic('edit', 16)}</button><button class="ibtn" data-a="pkDel" data-id="${p.id}" title="Entfernen">${ic('trash', 16)}</button></div>`).join('') || '<div class="hint">Noch keine Passkeys eingerichtet.</div>'}</div></div>
       <div class="stack"><div class="card"><div class="ch"><h3>Passwort</h3></div>${setRow('Anmeldung mit Passwort erlauben', S.passkeys.length ? 'Kann deaktiviert werden, wenn Passkeys eingerichtet sind.' : 'Richte zuerst einen Passkey ein.', `<button class="switch ${S.set.pwLogin ? 'on' : ''}" data-a="tog" data-k="set.pwLogin" ${S.passkeys.length ? '' : 'disabled style="opacity:.5"'}></button>`)}
         <div class="row" style="margin-top:8px"><button class="btn" data-a="pwOpen">Passwort ändern</button></div></div>
+        ${S.secQ && S.secQ.enabled && S.secQ.hasPassword ? `<div class="card"><div class="ch"><h3>Sicherheitsfragen</h3><span class="badge ${S.secQ.set ? 'good' : 'warn'} right">${S.secQ.set ? 'Eingerichtet' : 'Fehlt'}</span></div>
+          <p class="hint" style="margin-bottom:12px">Damit setzt du dein Passwort selbst zurück, wenn du es vergisst. Alle drei Antworten müssen stimmen.</p>
+          ${S.secQ.set ? `<div class="stack gap-s" style="margin-bottom:12px">${S.secQ.questions.map(t => `<div class="kv"><span>${esc(t)}</span><b class="muted">••••••</b></div>`).join('')}</div>` : ''}
+          <button class="btn ${S.secQ.set ? '' : 'primary'}" data-a="secqOpen">${S.secQ.set ? 'Fragen ändern' : 'Fragen festlegen'}</button></div>` : ''}
         <div class="card"><div class="ch"><h3>Authenticator-App (TOTP)</h3><span class="badge ${S.totp.enabled ? 'good' : ''} right">${S.totp.enabled ? 'Aktiv' : 'Aus'}</span></div>
           ${S.totp.enabled ? `<p class="hint" style="margin-bottom:12px">Bei der Anmeldung mit Passwort wird zusätzlich ein Code aus deiner Authenticator-App verlangt. Mit Passkey brauchst du ihn nicht.</p>
             <div class="kv"><span>Wiederherstellungscodes</span><b class="${S.totp.recoveryLeft <= 2 ? 'neg' : ''}">${S.totp.recoveryLeft} übrig</b></div>
@@ -863,6 +910,7 @@ function vAdmin() {
       ${setRow('Passkey-Einrichtung anbieten', 'Nach der Registrierung wird die Passkey-Einrichtung vorgeschlagen.', toggle('reg.passkeyPrompt', S.reg.passkeyPrompt))}
       <div class="setrow"><div class="tx"><b>Erlaubte E-Mail-Domain</b><span>Leer = alle Domains erlaubt.</span></div><input type="text" value="${esc(S.reg.domains)}" placeholder="@firma.de" data-in="reg.domains" data-nr="1" style="width:170px"></div>
       ${setRow('E-Mail-Adresse bestätigen', 'Neue Konten müssen ihre Adresse per Link bestätigen, bevor sie sich anmelden dürfen. Braucht einen eingerichteten SMTP-Server.', toggle('reg.verifyEmail', S.reg.verifyEmail))}
+      ${setRow('Zurücksetzen per Sicherheitsfragen', 'Neue Konten mit Passwort wählen bei der Registrierung drei Sicherheitsfragen. Damit können sie ihr Passwort selbst zurücksetzen. Schwächer als ein Link per Mail, weil sich Antworten erraten lassen; Fehlversuche sperren das Konto für diesen Weg.', toggle('reg.secQuestions', S.reg.secQuestions))}
       <div class="row" style="margin-top:12px"><a class="btn" href="#/register">Registrierungsseite ansehen</a></div></div>
       <div class="card"><div class="ch"><h3>Standardwerte für neue Benutzer</h3></div>
         <div class="setrow"><div class="tx"><b>Wochenarbeitszeit</b><span>Als Vorgabe für das Tagessoll (Mo–Fr).</span></div><input type="number" value="${S.reg.weekly}" data-in="reg.weekly" data-type="num" style="width:90px"><span class="muted">h</span></div>
@@ -915,14 +963,14 @@ function renderModal() {
       <div class="mf" style="justify-content:center"><button class="btn" data-a="pkCancel">Abbrechen</button></div></div></div>`;
   }
   if (m.type === 'user') {
-    const u = m.u, self = u.id === 'u1';
+    const u = m.u, self = u.id === S.me.id;
     return `<div class="ov" data-a="ovClose"><div class="modal"><div class="mh"><h3>${u.isNew ? 'Benutzer einladen' : 'Benutzer bearbeiten'}</h3><button class="ibtn right" data-a="modalClose">${ic('x')}</button></div><div class="mb">
       ${u.isNew ? '' : `<div class="row">${avatar(u.name)}<div><b>${esc(u.name)}</b><br><span class="xs muted">${esc(u.last)}</span></div></div>`}
       <label class="f">Name<input type="text" value="${esc(u.name)}" data-in="modal.u.name" data-nr="1" placeholder="Vor- und Nachname"></label>
       <label class="f">E-Mail<input type="email" value="${esc(u.email)}" data-in="modal.u.email" data-nr="1" placeholder="name@firma.de"></label>
       <div class="row wrap"><label class="f grow">Rolle<select data-in="modal.u.role" data-nr="1"><option value="user" ${u.role === 'user' ? 'selected' : ''}>Benutzer</option><option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Administrator</option></select></label>
       <label class="f grow">Wochensoll (h)<input type="number" style="width:100%;text-align:left" value="${u.week}" data-in="modal.u.week" data-type="num" data-nr="1"></label>${u.isNew ? '' : `<label class="f grow">Überstunden-Übertrag (h)<input type="number" step="0.25" style="width:100%;text-align:left" value="${u.startBal ?? 0}" data-in="modal.u.startBal" data-type="num" data-nr="1"></label>`}</div>
-      ${u.isNew ? `<p class="hint">Der Benutzer erhält einen Link zur Registrierung und kann sich anschließend per Passwort oder Passkey anmelden.</p>` : `<div class="chips"><button class="btn sm" data-a="toast" data-m="Passwort-Reset-Link gesendet">${ic('mail', 14)} Passwort-Reset senden</button><button class="btn sm" data-a="pkReset" ${u.passkeys ? '' : 'disabled'}>${ic('fp', 14)} Passkeys zurücksetzen (${u.passkeys})</button><button class="btn sm" data-a="endAllSess" data-id="${u.id}">${ic('logout', 14)} Alle Sitzungen beenden</button><button class="btn sm" data-a="totpReset" data-id="${u.id}" ${u.totp ? '' : 'disabled'}>${ic('shield', 14)} TOTP zurücksetzen</button></div>`}
+      ${u.isNew ? `<p class="hint">Der Benutzer erhält einen Link zur Registrierung und kann sich anschließend per Passwort oder Passkey anmelden.</p>` : `<div class="chips">${self ? '' : `<button class="btn sm" data-a="pwAdminOpen">${ic('key', 14)} Neues Passwort setzen</button>`}<button class="btn sm" data-a="pkReset" ${u.passkeys ? '' : 'disabled'}>${ic('fp', 14)} Passkeys zurücksetzen (${u.passkeys})</button><button class="btn sm" data-a="endAllSess" data-id="${u.id}">${ic('logout', 14)} Alle Sitzungen beenden</button><button class="btn sm" data-a="totpReset" data-id="${u.id}" ${u.totp ? '' : 'disabled'}>${ic('shield', 14)} TOTP zurücksetzen</button></div>`}
       </div><div class="mf">${u.isNew ? '' : `<div class="row" style="margin-right:auto">${self ? '' : `<button class="btn danger" data-a="userDel" data-id="${u.id}">Löschen</button>${u.status === 'blocked' ? `<button class="btn" data-a="userStatus" data-id="${u.id}" data-v="active">Entsperren</button>` : `<button class="btn" data-a="userStatus" data-id="${u.id}" data-v="blocked">Sperren</button>`}`}</div>`}<button class="btn" data-a="modalClose">Abbrechen</button><button class="btn primary" data-a="userSave">${u.isNew ? 'Einladung senden' : 'Speichern'}</button></div></div></div>`;
   }
   if (m.type === 'mfaRemind') return `<div class="ov"><div class="modal" style="width:min(450px,100%)"><div class="mh"><h3>Konto absichern</h3><button class="ibtn right" data-a="modalClose">${ic('x')}</button></div>
@@ -930,6 +978,20 @@ function renderModal() {
       <p>Du kannst noch bis <b>${mfaDate(S.mfa)}</b> ohne arbeiten (${daysText(S.mfa.daysLeft)}). Danach geht ohne Einrichtung nichts mehr.</p>
       <p class="hint">Solange nichts eingerichtet ist, bleibt deine Anmeldung 24 Stunden gültig, und du wirst bei jeder Anmeldung daran erinnert. Das Einrichten dauert etwa eine Minute.</p></div>
     <div class="mf"><button class="btn" data-a="modalClose">Später erinnern</button><button class="btn primary" data-a="mfaGo">Jetzt einrichten</button></div></div></div>`;
+  if (m.type === 'secq') return `<div class="ov"><div class="modal" style="width:min(520px,100%)"><div class="mh"><h3>Sicherheitsfragen</h3><button class="ibtn right" data-a="modalClose">${ic('x')}</button></div>
+    <div class="mb">${secQForm('mq')}<label class="f">Zur Bestätigung: dein Passwort<input type="password" id="mq-cur" autocomplete="current-password"></label></div>
+    <div class="mf"><button class="btn" data-a="modalClose">Abbrechen</button><button class="btn primary" data-a="secqSave">Speichern</button></div></div></div>`;
+  if (m.type === 'adminpw') return `<div class="ov"><div class="modal" style="width:min(460px,100%)"><div class="mh"><h3>Neues Passwort für ${esc(m.u.name)}</h3><button class="ibtn right" data-a="modalClose">${ic('x')}</button></div>
+    <div class="mb"><p>Du vergibst ein <b>Initialpasswort</b>. ${esc(m.u.name)} wird überall abgemeldet und muss beim nächsten Anmelden ein eigenes Passwort festlegen.</p>
+      <label class="f">Eigenes Initialpasswort (leer lassen = zufällig erzeugen)<input type="text" id="ap-pw" autocomplete="off" spellcheck="false" class="mono"></label>
+      <p class="hint">Ein erzeugtes Passwort ist lang und zufällig. Gib es dem Benutzer auf einem sicheren Weg weiter (nicht per E-Mail im Klartext).</p></div>
+    <div class="mf"><button class="btn" data-a="modalClose">Abbrechen</button><button class="btn primary" data-a="pwAdminSet">Passwort setzen</button></div></div></div>`;
+  if (m.type === 'adminpwDone') return `<div class="ov"><div class="modal" style="width:min(460px,100%)"><div class="mh"><h3>Initialpasswort gesetzt</h3><button class="ibtn right" data-a="modalClose">${ic('x')}</button></div>
+    <div class="mb"><p>Initialpasswort für <b>${esc(m.u.name)}</b>. Es wird nur jetzt angezeigt:</p>
+      <div class="row" style="gap:8px"><input type="text" readonly value="${esc(m.password)}" class="mono grow" style="user-select:all" onclick="this.select()"><button class="btn" data-a="pwCopy">Kopieren</button></div>
+      ${m.pwLogin ? '' : `<div class="callout warn">${ic('info')}<span>Die Anmeldung mit Passwort ist für dieses Konto abgeschaltet (Passkey). Das Passwort gilt erst, wenn der Benutzer sie wieder einschaltet.</span></div>`}
+      <p class="hint">Der Benutzer muss es beim nächsten Anmelden ändern.</p></div>
+    <div class="mf"><button class="btn primary" data-a="modalClose">Fertig</button></div></div></div>`;
   if (m.type === 'pwchange') return `<div class="ov"><div class="modal" style="width:min(420px,100%)"><div class="mh"><h3>Passwort ändern</h3><button class="ibtn right" data-a="modalClose">${ic('x')}</button></div>
     <div class="mb"><label class="f">Aktuelles Passwort<input type="password" id="pw-cur" autocomplete="current-password"></label>
       <label class="f">Neues Passwort<input type="password" id="rg-pw" autocomplete="new-password"></label><div class="pwrules" id="pw-rules">${pwRulesHtml('')}</div>
@@ -976,7 +1038,7 @@ function shell(view) {
   <main class="main"><div class="top"><div class="grow"><h1>${h1}</h1><div class="sub">${sub}</div></div>
     <span class="clockchip">${ic('day', 15)}${DOW_S[dow(TODAY)]}, ${dMid(TODAY).slice(0, 6)} · <b class="mono" style="color:var(--ink)">${hm(S.now)}</b>${S.speed > 1 ? ` · ${S.speed}×` : ''}</span>
     <button class="ibtn bd" data-a="theme" title="Darstellung: ${{ system: 'System', light: 'Hell', dark: 'Dunkel' }[S.themePref]} (Klick wechselt)">${ic({ system: 'monitor', light: 'sun', dark: 'moon' }[S.themePref], 18)}</button></div>
-  <div class="content" id="view">${mfaBanner()}${view}</div></main></div>`;
+  <div class="content" id="view">${mfaBanner()}${secqBanner()}${view}</div></main></div>`;
 }
 function demoPanel() {
   const acc = [['andre@example.de', 'André Becker', 'Administrator'], ['lena.hoffmann@example.de', 'Lena Hoffmann', 'Benutzer'], ['sophie.wagner@example.de', 'Sophie Wagner', 'Administratorin']];

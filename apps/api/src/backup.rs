@@ -29,9 +29,9 @@ const FORMAT: &str = "tickly-backup";
 const VERSION: u64 = 1;
 const KEEP_PRE_RESTORE: u32 = 5;
 /// Tabellen in der Reihenfolge, in der sie wieder eingefügt werden (Fremdschlüssel).
-const TABLES: [&str; 7] = ["users", "credentials", "recovery_codes", "absences", "days", "devices", "app_settings"];
+const TABLES: [&str; 8] = ["users", "credentials", "recovery_codes", "security_answers", "absences", "days", "devices", "app_settings"];
 /// Fehlt in Sicherungen aus früheren Versionen; gilt dann als leer.
-const OPTIONAL: [&str; 1] = ["recovery_codes"];
+const OPTIONAL: [&str; 2] = ["recovery_codes", "security_answers"];
 /// Tabellen mit fortlaufender Nummer, deren Zähler nach dem Einfügen nachgezogen werden muss.
 const SERIALS: [(&str, &str); 3] = [("credentials", "id"), ("absences", "id"), ("recovery_codes", "id")];
 const MAX_UPLOAD: usize = 512 * 1024 * 1024;

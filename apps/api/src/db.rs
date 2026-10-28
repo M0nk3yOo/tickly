@@ -41,6 +41,7 @@ pub struct UserRow {
     pub totp_last_step: i64,
     pub mfa_grace_start: Option<DateTime<Utc>>,
     pub email_verified_at: Option<DateTime<Utc>>,
+    pub must_change_pw: bool,
 }
 
 #[derive(FromRow)]
@@ -82,7 +83,12 @@ pub struct RegPolicy {
     /// Seit wann die Pflicht gilt; vorhandene Konten sind davon ausgenommen. Setzt der Server selbst.
     #[serde(default)]
     pub verify_email_since: Option<DateTime<Utc>>,
+    /// Passwort zurücksetzen per Sicherheitsfragen; bei der Registrierung werden dann drei Fragen verlangt.
+    #[serde(default = "default_true")]
+    pub sec_questions: bool,
 }
+
+fn default_true() -> bool { true }
 
 fn default_edit_days() -> u32 { 90 }
 fn default_grace() -> u32 { 7 }
@@ -90,7 +96,7 @@ fn default_session_days() -> u32 { 30 }
 
 impl Default for RegPolicy {
     fn default() -> Self {
-        RegPolicy { open: true, approval: true, domains: String::new(), weekly: 40.0, passkey_prompt: true, min_pw: MIN_PW, mfa_required: false, mfa_grace_days: 7, mfa_required_since: None, session_days: 30, edit_days_back: 90, verify_email: false, verify_email_since: None }
+        RegPolicy { open: true, approval: true, domains: String::new(), weekly: 40.0, passkey_prompt: true, min_pw: MIN_PW, mfa_required: false, mfa_grace_days: 7, mfa_required_since: None, session_days: 30, edit_days_back: 90, verify_email: false, verify_email_since: None, sec_questions: true }
     }
 }
 
@@ -286,10 +292,11 @@ impl Calc {
 }
 
 /* ---------- Sitzungen ---------- */
-pub async fn create_session(pool: &PgPool, uid: &str, limited: bool, secs: i64, ip: &crate::netsec::ClientIp, ua: &str) -> Res<String> {
+/// `pw_change`: Die Sitzung stammt aus einer Passwort-Anmeldung eines Kontos, das sein Initialpasswort ändern muss.
+pub async fn create_session(pool: &PgPool, uid: &str, limited: bool, pw_change: bool, secs: i64, ip: &crate::netsec::ClientIp, ua: &str) -> Res<String> {
     let sid = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
-    sqlx::query("INSERT INTO sessions (id, user_id, limited, expires_at, ip, country, user_agent) VALUES ($1, $2, $3, now() + make_interval(secs => $4), $5, $6, $7)")
-        .bind(&sid).bind(uid).bind(limited).bind(secs as f64).bind(ip.0.to_string()).bind(ip.country()).bind(ua).execute(pool).await?;
+    sqlx::query("INSERT INTO sessions (id, user_id, limited, pw_change, expires_at, ip, country, user_agent) VALUES ($1, $2, $3, $8, now() + make_interval(secs => $4), $5, $6, $7)")
+        .bind(&sid).bind(uid).bind(limited).bind(secs as f64).bind(ip.0.to_string()).bind(ip.country()).bind(ua).bind(pw_change).execute(pool).await?;
     sqlx::query("DELETE FROM sessions WHERE expires_at < now()").execute(pool).await?;
     Ok(sid)
 }

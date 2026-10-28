@@ -10,10 +10,13 @@ Liste mit Status (aktiv, wartet auf Freigabe, eingeladen, gesperrt), Rolle, heut
 
 - **Einladen:** Name, E-Mail, Rolle, Wochensoll. Mit eingerichtetem SMTP bekommt die Person eine Mail; sonst legst du nur das Konto an und gibst den Link selbst weiter.
 - **Bearbeiten:** Name, E-Mail, Rolle, Wochensoll, **Überstunden-Übertrag** (nur hier änderbar), Passkeys oder TOTP zurücksetzen, **alle Sitzungen beenden**, löschen.
+- **Neues Passwort setzen:** Du vergibst ein **Initialpasswort** (leer lassen = der Server erzeugt ein langes, zufälliges). Es wird nur einmal angezeigt, gib es sicher weiter. Der Benutzer wird überall abgemeldet und muss beim **nächsten Anmelden mit Passwort** ein eigenes festlegen; bis dahin ist alles gesperrt. Der Benutzer bekommt (mit SMTP) eine Hinweis-Mail ohne Passwort. Ein zweiter Faktor (TOTP, Passkey) bleibt unverändert. Für das eigene Konto nutzt du *Einstellungen → Passwort ändern*.
 - **Freigabe:** Neue Registrierungen (bei eingeschalteter Freigabe) bestätigst oder lehnst du ab.
 - Der Hinweis „ohne MFA“ erscheint, wenn MFA verpflichtend ist und ein Konto noch nichts eingerichtet hat (rot nach Ablauf der Karenzzeit).
 
 ## Registrierung & Richtlinien
+
+- **Zurücksetzen per Sicherheitsfragen** (Standard: an): Neue Konten mit Passwort wählen bei der Registrierung drei Fragen und können ihr Passwort damit selbst zurücksetzen. Das ist **schwächer** als ein Link per Mail, weil sich Antworten erraten lassen; schalte es aus, wenn du das nicht möchtest. Schutz: alle drei Antworten müssen stimmen, fünf Fehlversuche pro Konto und Stunde sperren diesen Weg, Fehlversuche zählen für die IP-Sperre, ein zweiter Faktor wird nie umgangen, und der Benutzer bekommt eine Mail.
 
 ![Richtlinien](screenshots/12-admin-richtlinien.png)
 

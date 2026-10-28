@@ -283,7 +283,7 @@ async fn reset(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientIp>,
         netsec::failure(&app, "login", ip, &h, None, None, "Ungültiger oder abgelaufener Link zum Zurücksetzen").await;
         return bad("Der Link ist ungültig oder abgelaufen. Bitte fordere einen neuen an.");
     };
-    sqlx::query("UPDATE users SET password_hash = $2, email_verified_at = coalesce(email_verified_at, now()) WHERE id = $1").bind(&uid).bind(hash_password(&r.password)).execute(&app.pool).await?;
+    sqlx::query("UPDATE users SET password_hash = $2, must_change_pw = false, email_verified_at = coalesce(email_verified_at, now()) WHERE id = $1").bind(&uid).bind(hash_password(&r.password)).execute(&app.pool).await?;
     // Alle bestehenden Sitzungen enden: wer das Passwort nicht kannte, soll nicht angemeldet bleiben
     sqlx::query("DELETE FROM sessions WHERE user_id = $1").bind(&uid).execute(&app.pool).await?;
     let u = db::user_by_id(&app.pool, &uid).await?;
@@ -308,7 +308,7 @@ async fn verify(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientIp>
     if u.status != "active" { return Ok(Json(json!({ "ok": true, "status": u.status })).into_response()) }
     let reg = db::reg_policy(&app.pool).await?;
     let secs = db::session_secs(&reg, &db::mfa_status(&app.pool, &u, &reg).await?);
-    let sid = db::create_session(&app.pool, &u.id, false, secs, &ip, &netsec::ua(&h)).await?;
+    let sid = db::create_session(&app.pool, &u.id, false, false, secs, &ip, &netsec::ua(&h)).await?;
     let secure = if app.cfg.secure_cookie { "; Secure" } else { "" };
     Ok(([(header::SET_COOKIE, format!("tickly_sid={sid}; Path=/; HttpOnly; SameSite=Lax; Max-Age={secs}{secure}"))], Json(json!({ "ok": true, "status": "active" }))).into_response())
 }
@@ -333,7 +333,7 @@ async fn change_password(State(app): St, h: HeaderMap, Extension(ip): Extension<
         return unauthorized("Das aktuelle Passwort ist falsch");
     }
     if let Some(m) = password_problem(&r.password, db::reg_policy(&app.pool).await?.min_pw) { return bad(m) }
-    sqlx::query("UPDATE users SET password_hash = $2 WHERE id = $1").bind(&u.id).bind(hash_password(&r.password)).execute(&app.pool).await?;
+    sqlx::query("UPDATE users SET password_hash = $2, must_change_pw = false WHERE id = $1").bind(&u.id).bind(hash_password(&r.password)).execute(&app.pool).await?;
     let cur = crate::api::sid_from(&h).unwrap_or_default();
     sqlx::query("DELETE FROM sessions WHERE user_id = $1 AND id <> $2").bind(&u.id).bind(cur).execute(&app.pool).await?;
     netsec::log(&app, "password_reset", true, ip, &h, Some(&u.id), Some(&u.email), "Passwort geändert").await;

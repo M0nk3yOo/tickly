@@ -8,5 +8,6 @@ pub mod events;
 pub mod mail;
 pub mod mfa;
 pub mod netsec;
+pub mod secq;
 pub mod secrets;
 pub mod sessions;

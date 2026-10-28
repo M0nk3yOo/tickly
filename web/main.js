@@ -12,7 +12,7 @@ function setPath(p, v) { const a = p.split('.'), l = a.pop(); a.reduce((o, k) =>
 function render() {
   const y = window.scrollY; LINES = [];
   hideTip();
-  $('#root').innerHTML = S.mfaGate ? vMfaGate() : S.route === 'forgot' ? vForgot() : S.route === 'reset' ? vReset() : S.route === 'verify' ? vVerify() : S.route === 'setup' ? vSetup() : S.route === 'login' ? vLogin() : S.route === 'register' ? vRegister() : S.ready ? shell((VIEWS[S.route] || vDashboard)()) : '';
+  $('#root').innerHTML = S.mfaGate ? vMfaGate() : S.route === 'forgot' ? vForgot() : S.route === 'reset' ? vReset() : S.route === 'verify' ? vVerify() : S.pwGate ? vPwGate() : S.route === 'setup' ? vSetup() : S.route === 'login' ? vLogin() : S.route === 'register' ? vRegister() : S.ready ? shell((VIEWS[S.route] || vDashboard)()) : '';
   renderModalOnly();
   $('#demo').innerHTML = S.loggedIn && S.ready && S.demo ? demoPanel() : '';
   window.scrollTo(0, y);
@@ -30,7 +30,7 @@ async function loadAdminTab() {
 }
 function renderModalOnly() { $('#modal').innerHTML = renderModal(); }
 async function route() {
-  if (S.mfaGate) { S.route = 'mfagate'; render(); return; }
+  if (S.pwGate || S.mfaGate) { S.route = S.pwGate ? 'pwgate' : 'mfagate'; render(); return; }
   let r = (location.hash.replace(/^#\/?/, '') || 'dashboard').split('?')[0];
   if (!ROUTES.includes(r)) r = 'dashboard';
   if (S.loggedIn && !S.ready) { try { await reload(); } catch (e) { S.loggedIn = false; } }
@@ -88,6 +88,7 @@ async function enter() {
   S.loggedIn = true; S.limited = false;
   // Ist die Karenzzeit für Passkey/Authenticator-App abgelaufen, gibt es nur noch die Einrichtung
   const ses = await api('GET', '/session');
+  if (ses.limited && ses.reason === 'password') { S.pwGate = ses; S.ready = false; return go('dashboard'); }
   if (ses.limited && ses.reason === 'mfa') { S.mfaGate = ses; S.ready = false; return go('dashboard'); }
   await reload();
   toast('Willkommen, ' + S.me.name.split(' ')[0]);
@@ -233,6 +234,42 @@ const H = {
     try { await api('PUT', '/admin/smtp', body); if (quiet !== true) toast('Einstellungen gespeichert'); } finally { S.smtp = await api('GET', '/admin/smtp'); render(); }
   },
   async smtpTest() { const to = $('#sm-to').value.trim(); S.smtpTest = await api('POST', '/admin/smtp/test', { to: to || null }); render(); },
+  /* Passwort vergessen: Sicherheitsfragen */
+  async fqStart() {
+    const mail = ($('#fg-mail') || {}).value.trim(); if (!mail) return toast('Bitte zuerst deine E-Mail-Adresse eingeben', true);
+    const r = await api('POST', '/auth/security-questions', { email: mail });
+    S.fq = { email: mail, questions: r.questions }; render();
+  },
+  fqBack(el, e) { e.preventDefault(); S.fq = null; render(); },
+  async fqSave() {
+    const answers = [1, 2, 3].map(i => $('#fq-a' + i).value.trim()), pw = $('#rs-pw').value;
+    if (answers.some(a => !a)) return toast('Bitte alle drei Fragen beantworten', true);
+    const miss = pwChecks(pw).filter(c => !c[1]).map(c => c[0]); if (miss.length) return toast('Dem Passwort fehlt: ' + miss.join(', '), true);
+    await api('POST', '/auth/reset-questions', { email: S.fq.email, answers, password: pw });
+    S.fq = null; toast('Passwort geändert – bitte neu anmelden'); go('login');
+  },
+  /* Eigene Sicherheitsfragen */
+  secqOpen() { S.modal = { type: 'secq' }; renderModalOnly(); },
+  async secqSave() {
+    const questions = readSecQ('mq'), qp = secQProblem(questions), cur = $('#mq-cur').value;
+    if (qp) return toast(qp, true); if (!cur) return toast('Bitte dein Passwort zur Bestätigung eingeben', true);
+    await api('PUT', '/me/security-questions', { current: cur, questions }); closeModal(); toast('Sicherheitsfragen gespeichert'); await reload(); render();
+  },
+  /* Initialpasswort eines Administrators: erzwungene Änderung */
+  async pwRequired() {
+    const pw = $('#rs-pw').value, miss = pwChecks(pw).filter(c => !c[1]).map(c => c[0]);
+    if (miss.length) return toast('Dem Passwort fehlt: ' + miss.join(', '), true);
+    if (pw !== $('#rs-pw2').value) return toast('Die Passwörter stimmen nicht überein', true);
+    await api('POST', '/me/password/required', { password: pw });
+    S.pwGate = null; S.ready = false; await enter();
+  },
+  /* Administration: Initialpasswort setzen */
+  pwAdminOpen() { S.modal = { type: 'adminpw', u: S.modal.u }; renderModalOnly(); },
+  async pwAdminSet() {
+    const u = S.modal.u, r = await api('POST', `/admin/users/${u.id}/password`, { password: $('#ap-pw').value.trim() || null });
+    S.modal = { type: 'adminpwDone', u, password: r.password, pwLogin: r.pwLogin }; renderModalOnly(); try { await reload(); } catch (e) { /* egal */ }
+  },
+  async pwCopy() { try { await navigator.clipboard.writeText(S.modal.password); toast('Passwort kopiert'); } catch (e) { toast('Bitte das Passwort markieren und kopieren', true); } },
   async setupSave() {
     const code = $('#su-code').value.trim(), name = $('#su-name').value.trim(), mail = $('#su-mail').value.trim(), pw = $('#rg-pw').value;
     if (!code) return toast('Bitte den Einrichtungscode eingeben', true);
@@ -241,7 +278,9 @@ const H = {
     const miss = pwChecks(pw).filter(c => !c[1]).map(c => c[0]);
     if (miss.length) return toast('Dem Passwort fehlt: ' + miss.join(', '), true);
     if (pw !== $('#su-pw2').value) return toast('Die Passwörter stimmen nicht überein', true);
-    await api('POST', '/setup', { code, name, email: mail, password: pw });
+    const questions = S.reg.secQuestions ? readSecQ('sq') : [], qp = S.reg.secQuestions ? secQProblem(questions) : '';
+    if (qp) return toast(qp, true);
+    await api('POST', '/setup', { code, name, email: mail, password: pw, questions });
     S.setup = false; history.replaceState(null, '', '#/dashboard'); await enter();
   },
   async register() {
@@ -250,14 +289,16 @@ const H = {
     if (!/^\S+@\S+\.\S+$/.test(mail)) return toast('Bitte gültige E-Mail eingeben', true);
     const miss = pwChecks(pw).filter(c => !c[1]).map(c => c[0]);
     if (miss.length) return toast('Dem Passwort fehlt: ' + miss.join(', '), true);
-    const r = await api('POST', '/auth/register', { name, email: mail, password: pw, startBal: regStartBal() });
+    const questions = S.reg.secQuestions ? readSecQ('sq') : [], qp = S.reg.secQuestions ? secQProblem(questions) : '';
+    if (qp) return toast(qp, true);
+    const r = await api('POST', '/auth/register', { name, email: mail, password: pw, startBal: regStartBal(), questions });
     S.verifyMail = mail; S.regStep = r.status === 'verify' ? 'verify' : r.status === 'active' ? 'done' : 'pending'; S.regPasskey = false; render();
   },
   regReset() { S.regStep = 'form'; render(); },
   async regContinue() { await enter(); },
   async logout() {
     try { await api('POST', '/auth/logout', {}); } catch (e) { /* egal */ }
-    S.loggedIn = false; S.ready = false; S.demoOpen = false; S.mfaGate = null; S.mfa = null; go('login');
+    S.loggedIn = false; S.ready = false; S.demoOpen = false; S.mfaGate = null; S.pwGate = null; S.mfa = null; go('login');
   },
   async demoLogin(el) {
     try { await api('POST', '/auth/logout', {}); } catch (e) { /* egal */ }
@@ -437,7 +478,9 @@ async function afterChange(path) {
   if (path.startsWith('reg.')) return saveReg();
   render();
 }
-const fail = e => { if (e && e.status === 401 && S.loggedIn) return expire();
+const fail = e => { if (e && e.status === 401 && S.loggedIn && !/falsch/.test(e.message)) return expire();
+  // Initialpasswort: auf die Seite zum Ändern wechseln
+  if (e && e.status === 403 && S.loggedIn && !S.pwGate && /neues Passwort fest/.test(e.message)) { api('GET', '/session').then(ses => { if (ses.limited && ses.reason === 'password') { S.pwGate = ses; S.ready = false; render(); } }); return; }
   // Karenzzeit gerade abgelaufen: auf die Einrichtungsseite wechseln
   if (e && e.status === 403 && S.loggedIn && !S.mfaGate && /Passkey oder eine Authenticator-App/.test(e.message)) { api('GET', '/session').then(ses => { if (ses.limited && ses.reason === 'mfa') { S.mfaGate = ses; S.ready = false; render(); } }).catch(() => {}); return; } toast(e && e.message || 'Fehler', true); };
 document.addEventListener('click', e => {
@@ -479,6 +522,10 @@ function onInput(e, live) {
   afterChange(path).catch(fail);
 }
 document.addEventListener('change', e => onInput(e, false));
+document.addEventListener('change', e => {
+  const t = e.target; if (!t || !t.dataset || !t.dataset.sq) return;
+  const c = $('#' + t.id.replace('-q', '-c')); if (c) { c.style.display = t.value === '__own' ? '' : 'none'; if (t.value === '__own') c.focus(); }
+});
 document.addEventListener('input', e => {
   if (e.target.id === 'sess-q') { S.sessQ = e.target.value; const p = e.target.selectionStart; render(); const n = $('#sess-q'); if (n) { n.focus(); n.setSelectionRange(p, p); } return; }
   if (e.target.id === 'rg-carry') { const r = document.querySelector('input[name="rg-bal"][value="carry"]'); if (r) r.checked = true; return; }
@@ -517,11 +564,12 @@ setInterval(async () => {
     const cfg = await api('GET', '/config');
     TODAY = cfg.today; TRACK_START = cfg.trackStart; S.dayDate = TODAY; S.statRef = TODAY; S.calMonth = TODAY.slice(0, 7);
     S.demoHint = cfg.demoHint; S.setup = !!cfg.setup; S.demo = !!cfg.demo; if (!S.demo) S.now = cfg.now;
-    S.reg = { ...S.reg, open: cfg.registrationOpen, approval: cfg.approval, domains: cfg.domains, minPw: cfg.minPw, passkeyPrompt: cfg.passkeyPrompt };
+    S.questionList = cfg.questionList || []; S.reg = { ...S.reg, secQuestions: cfg.secQuestions, open: cfg.registrationOpen, approval: cfg.approval, domains: cfg.domains, minPw: cfg.minPw, passkeyPrompt: cfg.passkeyPrompt };
     // Entwickler-Abkürzung: ?autologin=andre@example.de meldet mit dem Demo-Passwort an
     if (q.get('autologin') && cfg.demo) await api('POST', '/auth/login', { email: q.get('autologin'), password: DEMO_PW });
     const ses = await api('GET', '/session');
     if (ses.loggedIn && !ses.limited) S.loggedIn = true;
+    else if (ses.loggedIn && ses.reason === 'password') { S.loggedIn = true; S.pwGate = ses; }
     else if (ses.loggedIn && ses.reason === 'mfa') { S.loggedIn = true; S.mfaGate = ses; }
   } catch (e) { setTimeout(() => toast(e.message, true), 100); }
   /* Deep-Links für Demos: ?stat=year&set=rec&admin=reg&os=mac&day=2026-10-21&modal=abs */

@@ -56,6 +56,7 @@ async fn fresh_db(demo: bool) -> String {
         include_str!("../migrations/0003_totp.sql").hash(&mut h);
         include_str!("../migrations/0004_audit.sql").hash(&mut h);
         include_str!("../migrations/0005_mfa_policy.sql").hash(&mut h);
+        include_str!("../migrations/0009_security_questions.sql").hash(&mut h);
         include_str!("../migrations/0006_sessions_info.sql").hash(&mut h);
         include_str!("../migrations/0007_backup_kinds.sql").hash(&mut h);
         include_str!("../src/db.rs").hash(&mut h);
@@ -168,6 +169,15 @@ impl Client {
     async fn login_andre(&mut self) { assert_eq!(self.login("andre@example.de", "demo-passwort").await, StatusCode::OK); }
 }
 
+/// Drei Sicherheitsfragen mit Antworten für die Registrierung.
+fn qs() -> Value {
+    json!([
+        {"question": "Wie hieß dein erstes Haustier?", "answer": "Bello"},
+        {"question": "Wie heißt die Straße, in der du aufgewachsen bist?", "answer": "Lindenweg"},
+        {"question": "Wie lautete dein Spitzname in der Kindheit?", "answer": "Mäuschen"}
+    ])
+}
+
 fn day<'a>(snap: &'a Value, date: &str) -> &'a Value {
     snap["days"].as_array().unwrap().iter().find(|d| d["date"] == date).unwrap()
 }
@@ -268,7 +278,7 @@ async fn registration_approval_and_admin_rules() {
     let mut admin = Client::new().await;
     admin.login_andre().await;
     let mut anon = admin.fresh();
-    let reg = json!({"name": "Test Person", "email": "test.person@example.de", "password": "Ein-Langes-Passwort-42"});
+    let reg = json!({"name": "Test Person", "email": "test.person@example.de", "password": "Ein-Langes-Passwort-42", "questions": qs()});
     assert_eq!(anon.post("/api/auth/register", json!({"name": "", "email": "x", "password": "kurz"})).await.0, StatusCode::BAD_REQUEST);
     assert_eq!(anon.post("/api/auth/register", json!({"name": "T", "email": "t@example.de", "password": "kurz"})).await.0, StatusCode::BAD_REQUEST);
     let (st, r) = anon.post("/api/auth/register", reg.clone()).await;
@@ -295,7 +305,7 @@ async fn registration_approval_and_admin_rules() {
     assert_eq!(anon.fresh().post("/api/auth/register", json!({"name": "Neu", "email": "neu@example.de", "password": "Ein-Langes-Passwort-42"})).await.0, StatusCode::FORBIDDEN);
     // Einladung annehmen geht trotzdem
     assert_eq!(admin.post("/api/admin/users", json!({"name": "Eingeladen", "email": "eingeladen@example.de", "role": "user", "week": 30})).await.0, StatusCode::OK);
-    let (st, r) = anon.fresh().post("/api/auth/register", json!({"name": "Eingeladen", "email": "eingeladen@example.de", "password": "Ein-Langes-Passwort-42"})).await;
+    let (st, r) = anon.fresh().post("/api/auth/register", json!({"name": "Eingeladen", "email": "eingeladen@example.de", "password": "Ein-Langes-Passwort-42", "questions": qs()})).await;
     assert_eq!((st, r["status"].as_str()), (StatusCode::OK, Some("active")));
     // Selbstschutz
     assert_eq!(admin.post("/api/admin/users/u1/status", json!({"status": "blocked"})).await.0, StatusCode::BAD_REQUEST);
@@ -427,7 +437,7 @@ async fn pause_restart_resume_and_auto_start_window() {
 #[tokio::test]
 async fn password_policy_is_enforced_on_registration() {
     let mut anon = Client::new().await;
-    let reg = |pw: &str| json!({"name": "Pw Test", "email": "pw.test@example.de", "password": pw});
+    let reg = |pw: &str| json!({"name": "Pw Test", "email": "pw.test@example.de", "password": pw, "questions": qs()});
     for bad in ["Kurz-1a", "ein-langes-passwort-42!", "EIN-LANGES-PASSWORT-42!", "Ein-Langes-Passwort-xx", "EinLangesPasswort42", "Ein Langes Passwort 42"] {
         let (st, r) = anon.post("/api/auth/register", reg(bad)).await;
         assert_eq!(st, StatusCode::BAD_REQUEST, "{bad} muss abgelehnt werden: {r}");
@@ -1509,7 +1519,7 @@ async fn registration_requires_confirmed_email_and_mails_flow() {
 
     // Registrierung: keine Sitzung, Mail mit Link
     let mut anon = base.fresh().from_ip("198.51.100.20");
-    let (st, r) = anon.post("/api/auth/register", json!({"name": "Neu Person", "email": "neu.person@example.de", "password": "Ein-Langes-Passwort-42", "startBal": 3.5})).await;
+    let (st, r) = anon.post("/api/auth/register", json!({"name": "Neu Person", "email": "neu.person@example.de", "password": "Ein-Langes-Passwort-42", "startBal": 3.5, "questions": qs()})).await;
     assert_eq!((st, r["status"].clone()), (StatusCode::OK, json!("verify")));
     assert_eq!(anon.get("/api/snapshot?now=872").await.0, StatusCode::UNAUTHORIZED);
     let mails = wait_mails(&inbox, 1).await;
@@ -1602,7 +1612,7 @@ async fn first_run_setup_in_browser() {
     let (st, _) = c.post("/api/auth/register", json!({"name": "Vorwitzig", "email": "v@example.de", "password": "Sehr-Langes-Passwort-42"})).await;
     assert_eq!(st, StatusCode::FORBIDDEN);
     // Falscher Code, schwaches Passwort
-    let good = json!({"code": code, "name": "Chefin", "email": "chefin@example.de", "password": "Sehr-Langes-Passwort-42"});
+    let good = json!({"code": code, "name": "Chefin", "email": "chefin@example.de", "password": "Sehr-Langes-Passwort-42", "questions": qs()});
     let mut wrong = good.clone(); wrong["code"] = json!("falsch");
     assert_eq!(c.post("/api/setup", wrong).await.0, StatusCode::FORBIDDEN);
     let mut weak = good.clone(); weak["password"] = json!("kurz");
@@ -1624,4 +1634,148 @@ async fn first_run_setup_in_browser() {
     assert_eq!(c.fresh().login("chefin@example.de", "Sehr-Langes-Passwort-42").await, StatusCode::OK);
     // Jetzt wird gesichert
     assert!(tickly_api::backup::run_due(&c.app, noon).await.is_some());
+}
+
+/// Konto per Registrierung anlegen (Freigabe aus) und die Anmeldung wieder verlassen.
+async fn register_user(admin: &mut Client, email: &str, pw: &str) -> String {
+    assert_eq!(admin.put("/api/admin/registration", json!({"open": true, "approval": false, "domains": "", "weekly": 40, "passkeyPrompt": true, "minPw": 14})).await.0, StatusCode::OK);
+    let mut anon = admin.fresh();
+    let (st, r) = anon.post("/api/auth/register", json!({"name": "Test Person", "email": email, "password": pw, "questions": qs()})).await;
+    assert_eq!(st, StatusCode::OK, "{r}");
+    let snap = admin.get("/api/snapshot").await.1;
+    snap["users"].as_array().unwrap().iter().find(|u| u["email"] == email).unwrap()["id"].as_str().unwrap().to_string()
+}
+
+#[tokio::test]
+async fn password_reset_with_security_questions() {
+    let mut admin = Client::new().await;
+    admin.login_andre().await;
+    // Registrierung verlangt drei verschiedene Fragen und brauchbare Antworten
+    let mut anon = admin.fresh();
+    assert_eq!(admin.put("/api/admin/registration", json!({"open": true, "approval": false, "domains": "", "weekly": 40, "passkeyPrompt": true, "minPw": 14})).await.0, StatusCode::OK);
+    let reg = |q: Value| json!({"name": "T", "email": "t@example.de", "password": "Ein-Langes-Passwort-42", "questions": q});
+    assert_eq!(anon.post("/api/auth/register", json!({"name": "T", "email": "t@example.de", "password": "Ein-Langes-Passwort-42"})).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(anon.post("/api/auth/register", reg(json!([{"question": "Wie hieß dein erstes Haustier?", "answer": "Bello"}, {"question": "Wie hieß dein erstes Haustier?", "answer": "Rex"}, {"question": "Eigene Frage nach etwas Geheimem?", "answer": "xyz"}]))).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(anon.post("/api/auth/register", reg(json!([{"question": "Wie hieß dein erstes Haustier?", "answer": "Bello"}, {"question": "Wie lautete dein Spitzname in der Kindheit?", "answer": "ab"}, {"question": "Eigene Frage nach etwas Geheimem?", "answer": "xyz"}]))).await.0, StatusCode::BAD_REQUEST);
+    let id = register_user(&mut admin, "sq@example.de", "Ein-Langes-Passwort-42").await;
+    assert!(!id.is_empty());
+
+    // Fragen: echte für das Konto, stabile Scheinfragen für unbekannte Adressen (gleiche Form)
+    let mut pub_c = admin.fresh();
+    pub_c.cookie = None;
+    let (st, q) = pub_c.post("/api/auth/security-questions", json!({"email": "SQ@example.de"})).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(q["questions"], json!(["Wie hieß dein erstes Haustier?", "Wie heißt die Straße, in der du aufgewachsen bist?", "Wie lautete dein Spitzname in der Kindheit?"]));
+    let (_, f1) = pub_c.post("/api/auth/security-questions", json!({"email": "gibt-es-nicht@example.de"})).await;
+    let (_, f2) = pub_c.post("/api/auth/security-questions", json!({"email": "gibt-es-nicht@example.de"})).await;
+    assert_eq!(f1, f2);
+    assert_eq!(f1["questions"].as_array().unwrap().len(), 3);
+
+    // Ein Backup behält die Antworten
+    let (st, b) = admin.post("/api/admin/backups", json!({})).await;
+    assert_eq!(st, StatusCode::OK, "{b}");
+    let bid = b["id"].as_str().unwrap().to_string();
+    assert_eq!(admin.post(&format!("/api/admin/backups/{bid}/restore"), json!({})).await.0, StatusCode::OK);
+
+    // Falsche Antworten: zuerst abgewiesen, nach fünf Fehlversuchen ist das Konto für diesen Weg gesperrt
+    let wrong = json!({"email": "sq@example.de", "answers": ["Bello", "Lindenweg", "falsch"], "password": "Neues-Langes-Passwort-77!"});
+    // (von fünf verschiedenen Adressen, damit die Sperre des Kontos und nicht die der Adresse greift)
+    for i in 0..5 { assert_eq!(admin.fresh().from_ip(&format!("198.51.100.{}", 10 + i)).post("/api/auth/reset-questions", wrong.clone()).await.0, StatusCode::BAD_REQUEST); }
+    let right = json!({"email": "sq@example.de", "answers": ["  bello! ", "LINDEN-WEG", "mäuschen"], "password": "Neues-Langes-Passwort-77!"});
+    let (st, e) = admin.fresh().from_ip("198.51.100.99").post("/api/auth/reset-questions", right.clone()).await;
+    assert_eq!(st, StatusCode::FORBIDDEN);
+    assert!(e["error"].as_str().unwrap().contains("zu viele falsche Antworten"), "{e}");
+    // Unbekanntes Konto: dieselbe Abweisung wie bei falschen Antworten, kein Hinweis auf die Existenz
+    let (st, r) = admin.fresh().from_ip("198.51.100.98").post("/api/auth/reset-questions", json!({"email": "gibt-es-nicht@example.de", "answers": ["a1", "b2", "c3"], "password": "Neues-Langes-Passwort-77!"})).await;
+    assert_eq!((st, r["error"].as_str()), (StatusCode::BAD_REQUEST, Some("Die Antworten stimmen nicht.")));
+    // Wiederholtes Raten von derselben Adresse sperrt die Adresse
+    let mut guesser = admin.fresh().from_ip("198.51.100.77");
+    for i in 0..5 { assert_eq!(guesser.post("/api/auth/reset-questions", json!({"email": format!("x{i}@example.de"), "answers": ["a1", "b2", "c3"], "password": "Neues-Langes-Passwort-77!"})).await.0, StatusCode::BAD_REQUEST); }
+    assert_eq!(guesser.post("/api/auth/security-questions", json!({"email": "sq@example.de"})).await.0, StatusCode::FORBIDDEN);
+
+    // Nach Ablauf der Sperre klappt es: alle drei Antworten richtig (Schreibweise egal), Sitzungen enden
+    sqlx::query("UPDATE audit_log SET at = now() - interval '2 hours' WHERE kind = 'reset_q'").execute(&admin.app.pool).await.unwrap();
+    let mut user = admin.fresh();
+    assert_eq!(user.login("sq@example.de", "Ein-Langes-Passwort-42").await, StatusCode::OK);
+    let mut fresh_ip = admin.fresh().from_ip("198.51.100.55");
+    assert_eq!(fresh_ip.post("/api/auth/reset-questions", json!({"email": "sq@example.de", "answers": ["Bello", "Lindenweg"], "password": "Neues-Langes-Passwort-77!"})).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(fresh_ip.post("/api/auth/reset-questions", right).await.0, StatusCode::OK);
+    assert_eq!(user.get("/api/snapshot").await.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(admin.fresh().login("sq@example.de", "Ein-Langes-Passwort-42").await, StatusCode::UNAUTHORIZED);
+    assert_eq!(admin.fresh().login("sq@example.de", "Neues-Langes-Passwort-77!").await, StatusCode::OK);
+
+    // Ausgeschaltet: weder Fragen noch Zurücksetzen
+    assert_eq!(admin.put("/api/admin/registration", json!({"open": true, "approval": false, "domains": "", "weekly": 40, "passkeyPrompt": true, "minPw": 14, "secQuestions": false})).await.0, StatusCode::OK);
+    assert_eq!(pub_c.post("/api/auth/security-questions", json!({"email": "sq@example.de"})).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(pub_c.post("/api/auth/reset-questions", json!({"email": "sq@example.de", "answers": ["a", "b", "c"], "password": "Neues-Langes-Passwort-77!"})).await.0, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn own_security_questions_can_be_changed() {
+    let mut admin = Client::new().await;
+    admin.login_andre().await;
+    register_user(&mut admin, "own@example.de", "Ein-Langes-Passwort-42").await;
+    let mut u = admin.fresh();
+    assert_eq!(u.login("own@example.de", "Ein-Langes-Passwort-42").await, StatusCode::OK);
+    let st = u.get("/api/me/security-questions").await.1;
+    assert_eq!((st["set"].clone(), st["enabled"].clone()), (json!(true), json!(true)));
+    let newq = json!([{"question": "Wie hieß dein Kuscheltier als Kind?", "answer": "Teddy"}, {"question": "Welches war dein erstes Handy (Marke und Modell)?", "answer": "Nokia 3310"}, {"question": "Eine eigene Frage, die nur ich kenne?", "answer": "Zebra"}]);
+    assert_eq!(u.put("/api/me/security-questions", json!({"current": "falsch", "questions": newq})).await.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(u.put("/api/me/security-questions", json!({"current": "Ein-Langes-Passwort-42", "questions": newq})).await.0, StatusCode::OK);
+    let st = u.get("/api/me/security-questions").await.1;
+    assert_eq!(st["questions"][2], "Eine eigene Frage, die nur ich kenne?");
+    // Die neuen Antworten gelten (Leerzeichen und Satzzeichen egal)
+    let mut anon = admin.fresh();
+    anon.cookie = None;
+    assert_eq!(anon.post("/api/auth/reset-questions", json!({"email": "own@example.de", "answers": ["TEDDY", "nokia-3310", "zebra"], "password": "Neues-Langes-Passwort-77!"})).await.0, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn admin_initial_password_must_be_changed_at_next_login() {
+    let mut admin = Client::new().await;
+    admin.login_andre().await;
+    let id = register_user(&mut admin, "temp@example.de", "Ein-Langes-Passwort-42").await;
+    let mut user = admin.fresh();
+    assert_eq!(user.login("temp@example.de", "Ein-Langes-Passwort-42").await, StatusCode::OK);
+
+    // Nur Administratoren, nicht für sich selbst
+    assert_eq!(user.post(&format!("/api/admin/users/{id}/password"), json!({})).await.0, StatusCode::FORBIDDEN);
+    let me = admin.get("/api/session").await.1["me"]["id"].as_str().unwrap().to_string();
+    assert_eq!(admin.post(&format!("/api/admin/users/{me}/password"), json!({})).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(admin.post(&format!("/api/admin/users/{id}/password"), json!({"password": "zu kurz"})).await.0, StatusCode::BAD_REQUEST);
+
+    // Erzeugtes Passwort: erfüllt die Richtlinie, beendet die Sitzungen des Benutzers
+    let (st, r) = admin.post(&format!("/api/admin/users/{id}/password"), json!({})).await;
+    assert_eq!(st, StatusCode::OK);
+    let temp = r["password"].as_str().unwrap().to_string();
+    assert!(temp.len() >= 18 && tickly_api::app::password_problem(&temp, 14).is_none(), "{temp}");
+    assert_eq!(user.get("/api/snapshot").await.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(admin.fresh().login("temp@example.de", "Ein-Langes-Passwort-42").await, StatusCode::UNAUTHORIZED);
+
+    // Anmeldung klappt, aber alles ist gesperrt, bis das Passwort geändert ist
+    let mut u = admin.fresh();
+    assert_eq!(u.login("temp@example.de", &temp).await, StatusCode::OK);
+    let ses = u.get("/api/session").await.1;
+    assert_eq!((ses["limited"].clone(), ses["reason"].clone()), (json!(true), json!("password")));
+    let (st, e) = u.get("/api/snapshot").await;
+    assert_eq!(st, StatusCode::FORBIDDEN);
+    assert!(e["error"].as_str().unwrap().contains("neues Passwort"), "{e}");
+    assert_eq!(u.post("/api/me/password", json!({"current": &temp, "password": "Neues-Langes-Passwort-77!"})).await.0, StatusCode::FORBIDDEN);
+    // Das neue Passwort muss anders und gültig sein
+    assert_eq!(u.post("/api/me/password/required", json!({"password": &temp})).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(u.post("/api/me/password/required", json!({"password": "kurz"})).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(u.post("/api/me/password/required", json!({"password": "Neues-Langes-Passwort-77!"})).await.0, StatusCode::OK);
+    assert_eq!(u.get("/api/snapshot").await.0, StatusCode::OK);
+    assert_eq!(u.get("/api/session").await.1["limited"], false);
+    // Ohne erzwungene Änderung lässt sich der Weg nicht missbrauchen
+    assert_eq!(u.post("/api/me/password/required", json!({"password": "Noch-Ein-Passwort-88!x"})).await.0, StatusCode::BAD_REQUEST);
+    // Das Initialpasswort gilt nicht mehr, das neue schon
+    assert_eq!(admin.fresh().login("temp@example.de", &temp).await, StatusCode::UNAUTHORIZED);
+    let mut again = admin.fresh();
+    assert_eq!(again.login("temp@example.de", "Neues-Langes-Passwort-77!").await, StatusCode::OK);
+    assert_eq!(again.get("/api/snapshot").await.0, StatusCode::OK);
+
+    // Eigenes Initialpasswort des Administrators
+    let (st, r) = admin.post(&format!("/api/admin/users/{id}/password"), json!({"password": "Vom-Admin-Gewaehlt-99!"})).await;
+    assert_eq!((st, r["password"].clone()), (StatusCode::OK, json!("Vom-Admin-Gewaehlt-99!")));
 }
