@@ -2,6 +2,7 @@
 
 ## Unveröffentlicht
 
+- E-Mails zeigen oben das Tickly-Logo. Es ist als Bild in die Mail eingebettet (nicht als Link), erscheint also auch dort, wo Mailprogramme Fremdbilder blockieren, und unabhängig von der Erreichbarkeit des Servers.
 - Die Seitenleiste zeigt unten links die laufende Serverversion („Server 0.9.4“).
 - Der Menüpunkt „Benutzerverwaltung“ heißt jetzt **Serververwaltung**, denn er enthält mehr als die Benutzer (Richtlinien, Sicherheit, E-Mail, Sitzungen, Protokoll, Sicherung).
 

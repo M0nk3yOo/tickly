@@ -1875,6 +1875,8 @@ async fn long_tracking_mail_and_midnight_carry_over() {
     let m = &mails[0];
     assert!(m.contains("chef@example.de") && m.contains("Läuft dein Tracking noch?") && m.contains("08:00") && m.contains("#/dashboard"), "{}", &m[..m.len().min(1200)]);
     assert!(m.contains("12:00 Stunden Brutto"), "{}", &m[..m.len().min(1200)]);
+    // Das Logo ist als eingebettetes Bild dabei (multipart/related, Content-ID tickly-logo, PNG) und im HTML verlinkt
+    assert!(m.contains("multipart/related") && m.contains("Content-ID: <tickly-logo>") && m.contains("image/png") && m.contains("cid:tickly-logo"), "{}", &m[..m.len().min(2500)]);
     // Schwelle 0 = aus
     let mut reg = c.get("/api/snapshot").await.1["reg"].clone();
     reg["longTrackHours"] = json!(0);

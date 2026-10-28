@@ -13,7 +13,7 @@ use axum::{
 };
 use chrono::{Duration, Utc};
 use lettre::{
-    message::{header::ContentType, Mailbox, MultiPart, SinglePart},
+    message::{header::ContentType, Attachment, Mailbox, MultiPart, SinglePart},
     transport::smtp::authentication::Credentials,
     AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
 };
@@ -78,12 +78,17 @@ pub async fn active(pool: &PgPool) -> Option<SmtpCfg> {
 }
 
 /* ---------- Versand ---------- */
+/// Logo in den Mails: wird als Anhang eingebettet (`cid:tickly-logo`), damit es ohne Nachladen aus dem Netz angezeigt wird.
+const LOGO: &[u8] = include_bytes!("../assets/logo.png");
+
 pub async fn send(app: &App, cfg: &SmtpCfg, to: &str, subject: &str, text: &str, html: &str) -> Result<(), String> {
     let from = Mailbox::new(Some(cfg.from_name.clone()).filter(|n| !n.is_empty()), cfg.from_email.parse().map_err(|_| "Die Absenderadresse ist ungültig".to_string())?);
     let rcpt: Mailbox = to.parse().map_err(|_| format!("Die Empfängeradresse „{to}“ ist ungültig"))?;
-    let msg = Message::builder().from(from).to(rcpt).subject(subject)
-        .multipart(MultiPart::alternative().singlepart(SinglePart::builder().header(ContentType::TEXT_PLAIN).body(text.to_string())).singlepart(SinglePart::builder().header(ContentType::TEXT_HTML).body(html.to_string())))
-        .map_err(|e| e.to_string())?;
+    let alternative = MultiPart::alternative().singlepart(SinglePart::builder().header(ContentType::TEXT_PLAIN).body(text.to_string())).singlepart(SinglePart::builder().header(ContentType::TEXT_HTML).body(html.to_string()));
+    let body = if html.contains("cid:tickly-logo") {
+        MultiPart::related().multipart(alternative).singlepart(Attachment::new_inline("tickly-logo".to_string()).body(LOGO.to_vec(), ContentType::parse("image/png").map_err(|e| e.to_string())?))
+    } else { alternative };
+    let msg = Message::builder().from(from).to(rcpt).subject(subject).multipart(body).map_err(|e| e.to_string())?;
     let b = match cfg.security.as_str() {
         "tls" => AsyncSmtpTransport::<Tokio1Executor>::relay(&cfg.host),
         "none" => Ok(AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&cfg.host)),
@@ -108,7 +113,7 @@ pub fn compose(heading: &str, lines: &[String], button: Option<(&str, &str)>) ->
     text.push_str("\n—\nTickly Zeiterfassung\n");
     let paras: String = lines.iter().map(|l| format!("<p style=\"margin:0 0 14px;line-height:1.5\">{}</p>", esc(l))).collect();
     let btn = button.map(|(label, url)| format!("<p style=\"margin:22px 0\"><a href=\"{u}\" style=\"background:#4f46e5;color:#fff;text-decoration:none;padding:11px 20px;border-radius:9px;font-weight:600;display:inline-block\">{l}</a></p><p style=\"margin:0 0 14px;color:#6b6b73;font-size:12.5px\">Funktioniert der Knopf nicht, kopiere diesen Link in den Browser:<br><span style=\"word-break:break-all\">{u}</span></p>", u = esc(url), l = esc(label))).unwrap_or_default();
-    let html = format!("<div style=\"font-family:system-ui,-apple-system,'Segoe UI',sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#18181b\"><h2 style=\"margin:0 0 18px;font-size:20px\">{}</h2>{paras}{btn}<hr style=\"border:0;border-top:1px solid #e4e4e7;margin:24px 0 12px\"><p style=\"margin:0;color:#8a8a92;font-size:12px\">Tickly Zeiterfassung</p></div>", esc(heading));
+    let html = format!("<div style=\"font-family:system-ui,-apple-system,'Segoe UI',sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#18181b\"><table role=\"presentation\" style=\"margin:0 0 22px;border-collapse:collapse\"><tr><td style=\"padding:0 10px 0 0\"><img src=\"cid:tickly-logo\" width=\"36\" height=\"36\" alt=\"\" style=\"display:block;border:0;border-radius:8px\"></td><td style=\"font-size:19px;font-weight:700;color:#18181b\">Tickly</td></tr></table><h2 style=\"margin:0 0 18px;font-size:20px\">{}</h2>{paras}{btn}<hr style=\"border:0;border-top:1px solid #e4e4e7;margin:24px 0 12px\"><p style=\"margin:0;color:#8a8a92;font-size:12px\">Tickly Zeiterfassung</p></div>", esc(heading));
     (text, html)
 }
 
