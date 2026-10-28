@@ -2,6 +2,7 @@
 
 ## Unveröffentlicht
 
+- Die Seitenleiste zeigt unten links die laufende Serverversion („Server 0.9.4“).
 - Der Menüpunkt „Benutzerverwaltung“ heißt jetzt **Serververwaltung**, denn er enthält mehr als die Benutzer (Richtlinien, Sicherheit, E-Mail, Sitzungen, Protokoll, Sicherung).
 
 ## 0.9.4

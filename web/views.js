@@ -1087,6 +1087,7 @@ function shell(view) {
     <div class="sp"></div>
     <a class="trk" href="#/companion" style="display:block"><div class="t1"><span class="dot ${ts.cls}"></span>${ts.label}</div><div class="t2">${ts.key === 'stopped' && S.day.ended != null ? `Arbeitsende ${hm(S.day.ended)}` : ts.sub} · ${S.os === 'windows' ? 'Windows' : 'macOS'}</div></a>
     <div class="me">${avatar(S.me.name)}<div class="grow"><div class="nm">${esc(S.me.name)}</div><div class="rl">${S.me.role === 'admin' ? 'Administrator' : 'Benutzer'}</div></div><button class="ibtn" data-a="logout" title="Abmelden">${ic('logout', 18)}</button></div>
+    ${S.serverVersion ? `<div class="ver" title="Auf diesem Server läuft Tickly in Version ${esc(S.serverVersion)}">Server ${esc(S.serverVersion)}</div>` : ''}
   </aside>
   <main class="main"><div class="top"><div class="grow"><h1>${h1}</h1><div class="sub">${sub}</div></div>
     <span class="clockchip">${ic('day', 15)}${DOW_S[dow(TODAY)]}, ${dMid(TODAY).slice(0, 6)} · <b class="mono" style="color:var(--ink)">${hm(S.now)}</b>${S.speed > 1 ? ` · ${S.speed}×` : ''}</span>

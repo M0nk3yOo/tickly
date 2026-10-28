@@ -1992,6 +1992,8 @@ async fn origin_secret_is_required_and_violations_are_logged() {
     assert_eq!(anon.get("/api/config").await.0, StatusCode::FORBIDDEN);
     let log = ok.get("/api/admin/log?kind=origin&q=weitere").await.1;
     assert!(log["entries"][0]["detail"].as_str().unwrap().contains("+"), "{log}");
+    // Die Weboberfläche zeigt die Serverversion (angemeldet über den Snapshot)
+    assert_eq!(ok.get("/api/snapshot?now=872").await.1["serverVersion"], env!("CARGO_PKG_VERSION"));
     // Die Administration zeigt, dass die Prüfung aktiv ist
     assert_eq!(ok.get("/api/admin/security").await.1["originSecret"], true);
 }

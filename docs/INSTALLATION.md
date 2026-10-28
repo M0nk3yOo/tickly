@@ -143,6 +143,10 @@ docker compose up -d --build
 
 Datenbankänderungen werden beim Start automatisch eingespielt. Lies vorher den [Changelog](../CHANGELOG.md). Sichere vor jedem Update.
 
+Welche Version läuft, steht in der Weboberfläche **unten links in der Seitenleiste** („Server 0.9.4“). Nach einem Update siehst du dort, ob der neue Stand aktiv ist.
+
+**x86 und ARM:** `docker compose up -d --build` baut das Image für die Architektur deines Rechners (x86-64 oder ARM64). Die veröffentlichten Images `ghcr.io/m0nk3yoo/tickly:<Version>` enthalten beide (`linux/amd64` und `linux/arm64`). Die x86-Variante ist mit Rosetta auf einem Apple-Silicon-Mac gestartet und geprüft worden (Server und Datenbank healthy, Origin-Prüfung wirksam), aber nicht auf echter x86-Hardware.
+
 ## Ohne Docker
 
 Rust-Toolchain und PostgreSQL ≥ 14 vorausgesetzt:

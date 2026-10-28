@@ -492,6 +492,7 @@ async fn snapshot_json(app: &App, u: &UserRow, today: NaiveDate, now: f64) -> Re
     v["limits"] = json!({ "editDaysBack": reg.edit_days_back, "longTrackHours": reg.long_track_hours });
     v["secQ"] = crate::secq::status(app, u).await?;
     v["startBalSet"] = json!(u.start_bal_set);
+    v["serverVersion"] = json!(env!("CARGO_PKG_VERSION"));
     v["totp"] = json!({ "enabled": u.totp_enabled, "recoveryLeft": if u.totp_enabled { crate::mfa::recovery_left(app, &u.id).await? } else { 0 } });
     if u.role == "admin" {
         let labels = today_labels(app, today).await?;
