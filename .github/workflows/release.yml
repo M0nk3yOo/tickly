@@ -1,8 +1,8 @@
 name: Release
-# Start: Tag `v0.9.3` pushen (oder manuell). Baut Companion-Installer, Docker-Image und legt eine GitHub-Release an.
+# Reserve: Releases entstehen normalerweise lokal mit `scripts/release.sh <Version>` (siehe docs/ENTWICKLUNG.md).
+# Dieser Workflow startet nur von Hand (Actions → Release → Run workflow, dabei den Tag als Zweig/Tag wählen, z. B. v0.9.4).
+# Er baut Companion-Installer (inkl. .msi), Docker-Image und legt ein GitHub-Release an.
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
 
 permissions:

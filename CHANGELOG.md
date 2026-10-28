@@ -1,6 +1,8 @@
 # Änderungen
 
-## Unveröffentlicht
+## 0.9.4
+
+Aktualisierung von 0.9.3: Die Datenbank wird beim Start automatisch erweitert. Konten, bei denen der Überstunden-Stand zu Beginn 0 ist, werden nach der Anmeldung einmal danach gefragt (mit „Keine Überstunden“ bestätigt man 0).
 
 - **Beenden zeigt Minus:** Das Fenster „Tracking beenden“ zeigt zusätzlich den Saldo des Tages (Netto − Soll) und das Überstundenkonto vorher und nachher. Endet der Tag mit Minus, weist ein Hinweis darauf hin, dass es dem Überstundenkonto abgezogen wird.
 - Fehlerbehebung: Die voraussichtliche Tagesende-Zeit konnte über 24 Uhr hinausgehen („28:58“ bei Beginn um 20:27). Sie steht jetzt als „04:58 (morgen)“.

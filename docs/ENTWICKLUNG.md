@@ -44,12 +44,28 @@ Siehe Kopf von `scripts/screenshots.mjs` (Demo-Server und Vite-Server laufen las
 
 ## Release
 
+Releases entstehen **lokal** mit `scripts/release.sh`: Es baut die Installer und das Docker-Image auf deinem Rechner und veröffentlicht alles als GitHub-Release.
+
 Version steht an vier Stellen und muss gemeinsam erhöht werden: `Cargo.toml` (`[workspace.package]`), `apps/companion/package.json`, `apps/companion/src-tauri/tauri.conf.json`, `apps/companion/src-tauri/Cargo.toml` (und `apps/companion/src/api.ts` für die Vorschau).
 
-1. `CHANGELOG.md` ergänzen, Versionen erhöhen, `cargo test --workspace` laufen lassen, committen.
-2. Tag setzen und pushen: `git tag v0.9.3 && git push --tags`.
-3. Die GitHub-Action **Release** (`.github/workflows/release.yml`) baut die **Companion-Installer** (Windows `.msi`/`.exe`, macOS `.dmg` universal), das **Docker-Image** (`ghcr.io/<Besitzer>/tickly`) und legt eine **GitHub-Release** mit den Dateien und `SHA256SUMS` an.
-4. Release-Text prüfen und veröffentlichen.
+1. `CHANGELOG.md` um einen Abschnitt `## <Version>` ergänzen, Versionen erhöhen, committen und nach `main` pushen.
+2. `scripts/release.sh 0.9.4 --dry-run` baut alles nach `release/0.9.4/` (Probelauf, nichts wird veröffentlicht).
+3. `scripts/release.sh 0.9.4` baut, setzt und pusht den Tag `v0.9.4` und legt das Release mit allen Dateien und `SHA256SUMS` an.
+
+**Einmal einrichten (macOS):**
+```sh
+brew install llvm nsis docker docker-buildx colima
+cargo install --locked cargo-xwin
+rustup target add aarch64-apple-darwin x86_64-apple-darwin x86_64-pc-windows-msvc
+colima start --cpu 4 --memory 8 --disk 60
+gh auth refresh -h github.com -s write:packages,read:packages     # damit das Image nach ghcr.io geschoben werden darf
+```
+Docker braucht `"cliPluginsExtraDirs": ["/opt/homebrew/lib/docker/cli-plugins"]` in `~/.docker/config.json`, damit `docker buildx` gefunden wird.
+
+**Was lokal geht und was nicht:**
+- macOS-`.dmg` (universal) und Docker-Image (linux/amd64 und linux/arm64): ja.
+- Windows: nur der **NSIS-Installer (`…-setup.exe`)** per Cross-Build mit `cargo-xwin`. Das `.msi` braucht WiX und gibt es nur unter Windows.
+- Der GitHub-Workflow **Release** (`.github/workflows/release.yml`) startet nur noch von Hand und ist die Reserve, falls du ein `.msi` brauchst oder ohne eigenen Rechner bauen willst.
 
 **Signierung (empfohlen vor dem Einsatz im Team):**
 - *macOS:* Apple-Developer-ID + Notarisierung; Secrets `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` setzen (siehe Tauri-Dokumentation „Code Signing“).

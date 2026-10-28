@@ -1,6 +1,6 @@
 [package]
 name = "tickly-companion"
-version = "0.9.3"
+version = "0.9.4"
 edition = "2021"
 license = "MIT"
 description = "Tickly Companion: erkennt Arbeitsbeginn, Sperre und aktive App und meldet sie dem Server"
