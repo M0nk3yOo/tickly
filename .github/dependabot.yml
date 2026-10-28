@@ -1,0 +1,7 @@
+# Hält die in den Workflows verwendeten GitHub Actions aktuell: Dependabot schlägt neue Versionen als Pull Request vor.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
