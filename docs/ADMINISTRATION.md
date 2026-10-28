@@ -71,7 +71,7 @@ Anmeldungen, Fehlversuche, Registrierungen, Passwort-Zurücksetzen, Geräte, Spe
 - **Ziel:** das **Sicherungsverzeichnis** (`BACKUP_DIR`, im Compose-Betrieb `/backups` – am besten ein anderes Laufwerk) oder die Datenbank. Die Oberfläche prüft, ob das Verzeichnis beschreibbar ist.
 - **Jetzt sichern**, **Herunterladen**, **Wiederherstellen** (Datei hochladen oder gespeicherte wählen).
 - **Verschlüsselt** (AES-256-GCM), wenn `TICKLY_SECRET` gesetzt ist – Dateien und Datenbankeinträge. Ohne den Schlüssel sind sie unlesbar; bewahre ihn getrennt von den Sicherungen auf.
-- Beim Wiederherstellen wird **alles ersetzt**, der jetzige Stand vorher gesichert, du bleibst angemeldet. Eine Sicherung ohne aktiven Administrator wird abgelehnt. Sicherungen aus älteren Versionen lassen sich einspielen.
+- Beim Wiederherstellen wird **alles ersetzt**, der jetzige Stand vorher gesichert, du bleibst angemeldet, sofern dein Konto in der Sicherung enthalten ist (sonst meldest du dich mit einem Konto aus der Sicherung neu an, siehe [Neuaufbau](INSTALLATION.md#neuaufbau-nach-einem-totalausfall)). Eine Sicherung ohne aktiven Administrator wird abgelehnt. Sicherungen aus älteren Versionen lassen sich einspielen.
 - Nicht enthalten: Sitzungen, Kopplungscodes, E-Mail-Links, das Protokoll und die Sperrliste.
 
 ## Companion-Geräte koppeln

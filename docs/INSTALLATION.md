@@ -71,6 +71,17 @@ In der Weboberfläche unter **Companion-App → Kopplungscode erzeugen** und den
 - **Wiederherstellen:** *Administration → Sicherung* → Datei wählen oder eine gespeicherte Sicherung. Der jetzige Stand wird vorher automatisch gesichert.
 - Zusätzlich auf Datenbankebene möglich: `docker compose exec db pg_dump -U tickly tickly > backup.sql`.
 
+### Neuaufbau nach einem Totalausfall
+
+Wenn nur das Sicherungsverzeichnis übrig ist:
+
+1. Server neu aufsetzen (siehe oben) mit **demselben `TICKLY_SECRET`** und derselben `PUBLIC_URL` (Passkeys sind an die Domain gebunden). `ADMIN_EMAIL`/`ADMIN_PASSWORD` legen einen vorläufigen Administrator an.
+2. Das gerettete Verzeichnis als `BACKUP_PATH` einbinden (oder die Datei später hochladen).
+3. Als vorläufiger Administrator anmelden → *Administration → Sicherung* → die gewünschte Sicherung wählen → *Wiederherstellen*.
+4. Danach bist du abgemeldet, weil der vorläufige Administrator durch die Wiederherstellung ersetzt wird. **Melde dich mit einem Konto aus der Sicherung an** (Passwort bzw. Passkey/TOTP wie vorher). Der vorläufige Administrator existiert dann nicht mehr.
+
+Hinweise: Der neue Server legt beim Start selbst eine Sicherung des (leeren) Stands in dasselbe Verzeichnis. Wähle in der Liste deshalb die richtige Datei nach Datum aus, nicht einfach die neueste, und kopiere das Verzeichnis vorher an einen sicheren Ort. Mit falschem `TICKLY_SECRET` meldet Tickly „Entschlüsselung fehlgeschlagen“ und ändert nichts. Companion-Geräte bleiben gekoppelt; Sitzungen sind nicht Teil der Sicherung, alle anderen müssen sich neu anmelden.
+
 Die **Sicherung ersetzt kein Backup des Servers**: Kopiere das Sicherungsverzeichnis regelmäßig weg und bewahre `TICKLY_SECRET` getrennt davon auf.
 
 ## Aktualisieren
