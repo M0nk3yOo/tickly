@@ -116,7 +116,8 @@ function trackState() {
   if (d.stop === 'pause') return { key: 'paused', label: 'Tracking pausiert', cls: 'lock', sub: `Pause ${ago}` };
   if (d.stop === 'ask') return { key: 'ask', label: 'Rückfrage offen', cls: 'lock', sub: 'Arbeitest du gerade?' };
   if (d.stop === 'idle') return { key: 'idle', label: 'Tracking aus', cls: 'stop', sub: 'Nicht gestartet' };
-  return { key: 'stopped', label: 'Tracking gestoppt', cls: 'stop', sub: 'Companion beendet' };
+  const last = d.events && d.events[d.events.length - 1];
+  return { key: 'stopped', label: 'Tracking gestoppt', cls: 'stop', sub: last && last.k === 'stop' ? 'Im Web beendet' : 'Companion beendet' };
 }
 /** Der Tag ist beendet (Companion beendet / Rechner aus), nicht nur pausiert. */
 const dayClosed = () => !S.day.tracking && S.day.segs.length > 0 && S.day.stop !== 'pause';

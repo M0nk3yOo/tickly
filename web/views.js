@@ -49,7 +49,7 @@ const OSN = () => S.os === 'windows' ? 'Windows' : 'macOS';
 const dateField = (path, iso, { max, rm, cls = '' } = {}) => `<span class="dfield ${cls}"><input type="text" class="dtxt" inputmode="numeric" placeholder="TT.MM.JJJJ" maxlength="10" autocomplete="off" aria-label="Datum" value="${dMid(iso)}" data-in="${path}" data-fmt="date"${max ? ` data-max="${max}"` : ''}${rm ? ' data-rm="1"' : ''}><button type="button" class="ibtn dpick" data-a="pickDate" title="Kalender öffnen" tabindex="-1">${ic('cal', 16)}</button><input type="date" class="dnative" tabindex="-1" aria-hidden="true" value="${iso}"${max ? ` max="${max}"` : ''} data-in="${path}"${rm ? ' data-rm="1"' : ''}></span>`;
 const timeField = (path, min) => `<input type="text" class="ttxt" inputmode="numeric" placeholder="HH:MM" maxlength="5" autocomplete="off" aria-label="Uhrzeit" value="${hm(min)}" data-in="${path}" data-fmt="time">`;
 
-const EVICON = { app: 'monitor', start: 'power', lock: 'lock', unlock: 'unlock', quit: 'power', shutdown: 'power', pause: 'pause', ask: 'info' };
+const EVICON = { app: 'monitor', start: 'power', lock: 'lock', unlock: 'unlock', quit: 'power', shutdown: 'power', pause: 'pause', ask: 'info', stop: 'power' };
 const trkTone = ts => ts.key === 'running' ? 'good' : ['locked', 'paused', 'ask'].includes(ts.key) ? 'warn' : 'bad';
 /** Rückfrage „Arbeitest du gerade?“ – erscheint, wenn der Rechner außerhalb der Zeitfenster startet. */
 function askBox() {
@@ -212,6 +212,21 @@ function vPwGate() {
     <p class="sm" style="text-align:center"><a href="#/login" data-a="logout" style="color:var(--brand);font-weight:600">Abmelden</a></p>
   </div></div></div>`;
 }
+/* Zeiterfassung im Web: Beenden */
+const startViaWeb = () => { const f = S.day.events && S.day.events[0]; return !!f && f.k === 'start' && /im Web/.test(f.txt); };
+const endedByWeb = () => { const l = S.day.events && S.day.events[S.day.events.length - 1]; return !!l && l.k === 'stop'; };
+function longTrackBanner(t, ts) {
+  const h = S.limits && S.limits.longTrackHours;
+  if (!h || !S.day.tracking || t.gross < h * 60) return '';
+  return `<div class="callout warn" style="margin-top:14px">${ic('day')}<div class="grow"><b>Läuft dein Tracking noch?</b> Es läuft schon seit <b>${durN(t.gross)} Stunden</b> (Brutto, seit ${t.start != null ? hm(t.start) : '–'}). Hast du vergessen, es zu beenden?</div><button class="btn sm primary" data-a="stopOpen" data-m="now">Jetzt beenden</button><button class="btn sm" data-a="stopOpen" data-m="custom">Ende festlegen …</button></div>`;
+}
+function stopSummary(m) {
+  if (m.err) return `<div class="callout warn">${ic('info')}<span>${esc(m.err)}</span></div>`;
+  const p = m.prev; if (!p) return `<p class="muted sm">Berechne …</p>`;
+  return `<div class="stopsum"><div class="kv"><span>Arbeitsbeginn</span><b class="mono">${hm(p.start)}</b></div><div class="kv"><span>Ende</span><b class="mono">${hm(p.at)}</b></div>
+    <div class="kv"><span>Brutto (Anwesenheit)</span><b class="mono">${dur(p.gross)}</b></div><div class="kv"><span>Pause (abgezogen)</span><b class="mono">${p.pause > 0 ? '−' : ''}${dur(p.pause)}</b></div>
+    <div class="kv"><span><b>Netto</b></span><b class="mono">${dur(p.net)}</b></div>${p.soll ? `<div class="kv"><span>Tagessoll</span><b class="mono">${dur(p.soll)}</b></div>` : ''}</div>`;
+}
 function mfaBanner() {
   const m = S.mfa; if (!m || !m.required || m.compliant) return '';
   return `<div class="mfa-banner">${ic('shield', 20)}<div class="grow"><b>Bitte sichere dein Konto ab.</b> Dein Administrator verlangt einen Passkey oder eine Authenticator-App – ${daysText(m.daysLeft)} (bis ${mfaDate(m)}). Bis dahin gilt deine Anmeldung nur 24 Stunden.</div><button class="btn sm primary" data-a="mfaGo">Jetzt einrichten</button></div>`;
@@ -330,12 +345,12 @@ function vDashboard() {
   const trkBadge = `<span class="badge ${trkTone(ts)}"><span class="dot ${ts.cls}"></span>${ts.label}</span>`;
   const first = S.me.name.split(' ')[0];
   let msg;
-  const noWork = !S.day.segs.length, dayEnded = dayClosed(), st0 = t.start != null ? t.start : S.now - 30;
+  const noWork = !S.day.segs.length, dayEnded = dayClosed(), longTrack = longTrackBanner(t, ts), st0 = t.start != null ? t.start : S.now - 30;
   if (ts.key === 'ask') msg = `Der Rechner läuft seit <b>${hm(S.day.start)}</b>, aber das Tracking wurde noch nicht gestartet.`;
-  else if (noWork) msg = `Heute wird noch nicht getrackt. Starte das Tracking im Companion oder lege Zeitfenster für den automatischen Start fest.`;
+  else if (noWork) msg = `Heute wird noch nicht getrackt. Starte das Tracking im Companion, hier im Web oder lege Zeitfenster für den automatischen Start fest.`;
   else if (ts.key === 'paused') msg = `Das Tracking ist seit <b>${hm(S.day.ended)}</b> gestoppt. Die Pause wird nicht gezählt – der Tag bleibt offen.`;
   else if (S.day.stop === 'shutdown') msg = `Der Rechner wurde um <b>${hm(S.day.ended)}</b> heruntergefahren. Nach dem nächsten Start läuft das Tracking von selbst weiter.`;
-  else if (dayEnded) msg = `Das Tracking endete um <b>${hm(S.day.ended)}</b>${S.day.stop === 'quit' ? ' (Companion beendet)' : ''}. Das war dein bisheriges Arbeitsende.`;
+  else if (dayEnded) msg = `Das Tracking endete um <b>${hm(S.day.ended)}</b>${S.day.stop === 'quit' && !endedByWeb() ? ' (Companion beendet)' : ''}. Das war dein bisheriges Arbeitsende.`;
   else if (over) msg = `Tagessoll erreicht – seit <b>${dur(t.counted - t.soll)}</b> sammelst du Überstunden.`;
   else msg = `Du hast heute um <b>${hm(t.start)}</b> begonnen. Noch <b>${dur(rest)}</b> bis zum Tagessoll.`;
   // Letzte 2 Wochen
@@ -355,21 +370,23 @@ function vDashboard() {
   const app = appUsage(TODAY, TODAY), up = nextHolidays(3);
   const vac = S.absences.filter(a => a.from > TODAY).sort((a, b) => a.from.localeCompare(b.from));
   return `<div class="g-hero">
-    <div class="card"><div class="row between wrap" style="margin-bottom:6px"><div><h3 style="font-size:20px;letter-spacing:-.01em">Guten Tag, ${esc(first)}</h3><p class="muted" style="margin-top:2px">${dLong(TODAY)} · KW ${isoWeek(TODAY)}</p></div><div class="row gap-s" style="gap:10px">${ts.key === 'running' ? `<button class="btn sm" data-a="cAct" data-k="pause" title="Zeiterfassung anhalten – die Pause zählt nicht">${ic('pause', 14)} Stoppen</button>` : ''}${trkBadge}</div></div>
+    <div class="card"><div class="row between wrap" style="margin-bottom:6px"><div><h3 style="font-size:20px;letter-spacing:-.01em">Guten Tag, ${esc(first)}</h3><p class="muted" style="margin-top:2px">${dLong(TODAY)} · KW ${isoWeek(TODAY)}</p></div><div class="row gap-s" style="gap:10px">${ts.key === 'running' ? `<button class="btn sm" data-a="cAct" data-k="pause" title="Zeiterfassung anhalten – die Pause zählt nicht, der Tag bleibt offen">${ic('pause', 14)} Pause</button>` : ''}${trkBadge}</div></div>
       <p class="ink2" style="margin:8px 0 16px">${msg}</p>
       <div class="row wrap gap-l" style="align-items:center">
         <div class="ring">${ring(t.soll ? t.counted / t.soll : 0, over)}<div class="mid"><div class="n mono sec" id="ring-n" data-base="${t.counted}" data-run="${ts.key === 'running' ? 1 : 0}" data-at="${S.now}">${durS(t.counted)}</div><div class="u">von ${durN(t.soll)} h</div></div></div>
         <div class="grow" style="min-width:230px">
-          <div class="kv"><span>Arbeitsbeginn</span><b>${t.start != null ? hm(t.start) : '–'}${t.start != null ? ` <span class="badge brand" style="margin-left:4px">${ic('power', 12)} ${S.os === 'windows' ? 'Windows' : 'macOS'}-Start</span>` : ''}</b></div>
+          <div class="kv"><span>Arbeitsbeginn</span><b>${t.start != null ? hm(t.start) : '–'}${t.start != null ? ` <span class="badge brand" style="margin-left:4px">${ic('power', 12)} ${startViaWeb() ? 'Web' : S.os === 'windows' ? 'Windows' : 'macOS'}-Start</span>` : ''}</b></div>
           <div class="kv"><span>Brutto (Anwesenheit)</span><b class="mono">${durN(t.gross)} h</b></div>
           <div class="kv"><span>${S.set.mode === 'net' ? 'Pause abgezogen' : 'Pause (nicht abgezogen)'}</span><b class="mono">${S.set.mode === 'net' ? '−' : ''}${durN(S.set.mode === 'net' ? t.brk : Math.max(t.rule, t.lockedBreak))} h</b></div>
           <div class="kv"><span>${dayEnded ? 'Arbeitsende' : 'Voraussichtliches Ende'}</span><b class="mono">${dayEnded ? hm(S.day.ended) : fe ? hm(fe) : over ? 'Soll erreicht' : '–'}</b></div>
           <div class="kv"><span>Erfassungsmodus</span><b>${S.set.mode === 'net' ? 'Netto' : 'Brutto'}</b></div>
         </div></div>
+      ${longTrack}
+      ${(S.day.tracking || ts.key === 'paused') && !longTrack ? `<div class="row wrap" style="margin-top:14px;gap:8px"><button class="btn" data-a="stopOpen" data-m="now" title="Tracking jetzt beenden – zeigt vorher Zeitpunkt, Brutto und Netto">${ic('power', 15)} Tracking beenden</button><button class="btn" data-a="stopOpen" data-m="custom" title="Beenden mit einem eigenen Ende, z. B. wenn du es vergessen hast">${ic('day', 15)} Ende festlegen …</button></div>` : ''}
       ${ts.key === 'ask' ? `<div style="margin-top:14px">${askBox()}</div>` : ''}
       ${ts.key === 'paused' ? `<div class="callout warn" style="margin-top:14px">${ic('pause')}<div class="grow"><b>Tracking gestoppt.</b> Zeit wird nicht gezählt, bis du das Tracking fortsetzt.</div><button class="btn sm primary" data-a="cAct" data-k="start">${ic('play', 13)} Fortsetzen</button></div>` : ''}
       ${ts.key === 'idle' ? `<div class="callout warn" style="margin-top:14px">${ic('info')}<div class="grow"><b>Tracking ist aus.</b> Es startet automatisch im nächsten Zeitfenster oder auf Knopfdruck.</div><button class="btn sm primary" data-a="cAct" data-k="start">${ic('play', 13)} Jetzt starten</button></div>` : ''}
-      ${ts.key === 'stopped' ? `<div class="callout warn" style="margin-top:14px">${ic('power')}<div class="grow"><b>Companion nicht aktiv.</b> Die Zeiterfassung ist gestoppt, bis der Companion wieder gestartet wird.</div>${S.demo ? `<button class="btn sm" data-a="cAct" data-k="start">Companion starten</button>` : ''}</div>` : ''}
+      ${ts.key === 'stopped' ? `<div class="callout warn" style="margin-top:14px">${ic('power')}<div class="grow"><b>Companion nicht aktiv.</b> Die Zeiterfassung ist gestoppt, bis der Companion wieder gestartet wird.</div>${S.demo ? `<button class="btn sm" data-a="cAct" data-k="start">Companion starten</button>` : `<button class="btn sm primary" data-a="cAct" data-k="start">${ic('play', 13)} ${dayEnded ? 'Im Web fortsetzen' : 'Im Web starten'}</button>`}</div>` : ''}
     </div>
     <div class="stack">
       <div class="tile"><div class="l">${ic('cal', 15)}Wochensaldo · KW ${isoWeek(TODAY)}</div><div class="v mono">${sgn(wk.diff)}</div><div class="s">Vorwoche KW ${isoWeek(TODAY) - 1}: ${sgn(pw.diff)}${t.diffLive < 0 && !dayEnded ? ` · heute noch ${dur(-t.diffLive)} offen` : ''}</div></div>
@@ -915,6 +932,7 @@ function vAdmin() {
       <div class="card"><div class="ch"><h3>Standardwerte für neue Benutzer</h3></div>
         <div class="setrow"><div class="tx"><b>Wochenarbeitszeit</b><span>Als Vorgabe für das Tagessoll (Mo–Fr).</span></div><input type="number" value="${S.reg.weekly}" data-in="reg.weekly" data-type="num" style="width:90px"><span class="muted">h</span></div>
         <div class="setrow"><div class="tx"><b>Mindestlänge Passwort</b><span>Mindestens 14 Zeichen. Immer mit Groß- und Kleinbuchstaben, Zahl und Sonderzeichen.</span></div><select data-in="reg.minPw" data-type="num" style="width:110px">${[14, 16, 20, 24].map(v => `<option ${S.reg.minPw === v ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+        <div class="setrow"><div class="tx"><b>Warnung bei langem Tracking</b><span>Läuft das Tracking so viele Stunden (Brutto), bekommt der Benutzer einen Hinweis im Dashboard und eine Mail (mit SMTP), ob er es vergessen hat. 0 = aus.</span></div><input type="number" min="0" max="24" value="${S.reg.longTrackHours ?? 10}" data-in="reg.longTrackHours" data-type="num" style="width:90px"><span class="muted">h</span></div>
         <div class="callout info" style="margin-top:12px">${ic('info')}<span>Die Registrierungsseite reagiert sofort auf diese Einstellungen.</span></div></div></div>
       ${(() => {
         const need = S.users.filter(u => u.mfa && u.mfa.required && !u.mfa.compliant), late = need.filter(u => u.mfa.expired);
@@ -978,6 +996,16 @@ function renderModal() {
       <p>Du kannst noch bis <b>${mfaDate(S.mfa)}</b> ohne arbeiten (${daysText(S.mfa.daysLeft)}). Danach geht ohne Einrichtung nichts mehr.</p>
       <p class="hint">Solange nichts eingerichtet ist, bleibt deine Anmeldung 24 Stunden gültig, und du wirst bei jeder Anmeldung daran erinnert. Das Einrichten dauert etwa eine Minute.</p></div>
     <div class="mf"><button class="btn" data-a="modalClose">Später erinnern</button><button class="btn primary" data-a="mfaGo">Jetzt einrichten</button></div></div></div>`;
+  if (m.type === 'stop') {
+    const custom = m.mode === 'custom', at = m.prev ? m.prev.at : m.at;
+    return `<div class="ov"><div class="modal" style="width:min(460px,100%)"><div class="mh"><h3>Tracking beenden</h3><button class="ibtn right" data-a="modalClose">${ic('x')}</button></div>
+    <div class="mb">${custom
+      ? `<label class="f">Ende (Uhrzeit)${timeField('modal.at', m.at)}<span class="hint">Zwischen Arbeitsbeginn und jetzt (${hm(S.now)}). Alles danach wird nicht gezählt.</span></label>`
+      : `<p>Das Tracking endet <b>jetzt, um ${hm(m.prev ? m.prev.at : S.now)} Uhr</b>. Danach wird nichts mehr gezählt.</p>`}
+      ${stopSummary(m)}
+      <p class="sm"><a href="#" data-a="stopMode" style="color:var(--brand);font-weight:600">${custom ? 'Stattdessen jetzt beenden' : 'Anderes Ende festlegen …'}</a></p></div>
+    <div class="mf"><button class="btn" data-a="modalClose">Abbrechen</button><button class="btn primary" data-a="stopDo" ${m.prev ? '' : 'disabled'}>${custom ? `Mit Ende ${hm(at)} beenden` : 'Tracking beenden'}</button></div></div></div>`;
+  }
   if (m.type === 'secq') return `<div class="ov"><div class="modal" style="width:min(520px,100%)"><div class="mh"><h3>Sicherheitsfragen</h3><button class="ibtn right" data-a="modalClose">${ic('x')}</button></div>
     <div class="mb">${secQForm('mq')}<label class="f">Zur Bestätigung: dein Passwort<input type="password" id="mq-cur" autocomplete="current-password"></label></div>
     <div class="mf"><button class="btn" data-a="modalClose">Abbrechen</button><button class="btn primary" data-a="secqSave">Speichern</button></div></div></div>`;

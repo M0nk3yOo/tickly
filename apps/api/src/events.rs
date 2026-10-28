@@ -4,9 +4,9 @@ use crate::db::{self, UserRow};
 use chrono::{DateTime, Duration, Utc};
 use serde::Deserialize;
 use sqlx::PgConnection;
-use tickly_core::{track_policy, Absence};
+use tickly_core::{track_policy, Absence, DayState};
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Clone, Debug, Default)]
 pub struct Ev {
     pub kind: String,
     /// Zeitpunkt des Ereignisses (UTC). Fehlt er, gilt „jetzt“.
@@ -16,6 +16,11 @@ pub struct Ev {
     pub app: Option<String>,
     pub os: Option<String>,
     pub answer: Option<String>,
+    /// Nur „stopat“: gewünschtes Ende in Minuten seit Mitternacht.
+    pub until: Option<f64>,
+    /// Kommt aus der Weboberfläche (nicht vom Companion). Setzt der Server, nie der Client.
+    #[serde(skip)]
+    pub web: bool,
 }
 
 /// Ereignisse, die nur im Demo-Modus gelten (Zeitreise, Tag zurücksetzen).
@@ -54,6 +59,28 @@ pub async fn apply(app: &App, conn: &mut PgConnection, u: &UserRow, abs: &[Absen
                 db::put_day(conn, &u.id, pd, &ps).await?;
             }
         }
+    }
+    // Zeiterfassung im Web (ohne Companion): Start, Beenden jetzt, Beenden zu einem früheren Zeitpunkt
+    let web_stop = matches!(kind, "stop" | "stopat");
+    let web_start = kind == "start" && ev.web;
+    if web_stop && !ev.web && !app.cfg.demo { return bad("Beenden meldet nur die Weboberfläche") }
+    if web_stop || web_start {
+        let res = if web_stop {
+            match day.as_mut() {
+                None => Err("Heute läuft kein Tracking.".to_string()),
+                Some(d) if kind == "stop" => d.stop_web(now, now),
+                Some(d) => match ev.until { Some(at) if at.is_finite() => d.stop_web(now, at), _ => return bad("Bitte ein Ende angeben") },
+            }
+        } else {
+            let mut d = day.take().unwrap_or_else(|| DayState::empty(now));
+            let r = d.web_start(now).map_err(String::from);
+            day = Some(d);
+            r
+        };
+        return match res {
+            Ok(()) => { db::put_day(conn, &u.id, date, &day.expect("Tag")).await?; Ok(Ok(())) }
+            Err(m) => Ok(Err(m)),
+        };
     }
     match tickly_core::apply_event(&mut day, kind, now, os, &p, ev.app.as_deref(), ev.answer.as_deref()) {
         Ok(()) => {

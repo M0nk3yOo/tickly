@@ -57,6 +57,7 @@ async fn fresh_db(demo: bool) -> String {
         include_str!("../migrations/0004_audit.sql").hash(&mut h);
         include_str!("../migrations/0005_mfa_policy.sql").hash(&mut h);
         include_str!("../migrations/0009_security_questions.sql").hash(&mut h);
+        include_str!("../migrations/0010_track_alerts.sql").hash(&mut h);
         include_str!("../migrations/0006_sessions_info.sql").hash(&mut h);
         include_str!("../migrations/0007_backup_kinds.sql").hash(&mut h);
         include_str!("../src/db.rs").hash(&mut h);
@@ -1778,4 +1779,108 @@ async fn admin_initial_password_must_be_changed_at_next_login() {
     // Eigenes Initialpasswort des Administrators
     let (st, r) = admin.post(&format!("/api/admin/users/{id}/password"), json!({"password": "Vom-Admin-Gewaehlt-99!"})).await;
     assert_eq!((st, r["password"].clone()), (StatusCode::OK, json!("Vom-Admin-Gewaehlt-99!")));
+}
+
+#[tokio::test]
+async fn web_only_tracking_start_stop_and_preview() {
+    let mut c = Client::real().await;
+    assert_eq!(c.login("chef@example.de", "Sehr-Langes-Passwort-42").await, StatusCode::OK);
+    // Ohne laufendes Tracking gibt es nichts zu beenden; Systemereignisse meldet nur der Companion
+    assert_eq!(c.post("/api/companion", json!({"kind": "stop"})).await.0, StatusCode::CONFLICT);
+    assert_eq!(c.post("/api/companion", json!({"kind": "stopat", "until": 100})).await.0, StatusCode::CONFLICT);
+    assert_eq!(c.post("/api/companion", json!({"kind": "lock"})).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(c.post("/api/tracking/stop-preview", json!({})).await.0, StatusCode::CONFLICT);
+    // Start im Web (ohne Companion), nicht doppelt
+    assert_eq!(c.post("/api/companion", json!({"kind": "start"})).await.0, StatusCode::OK);
+    assert_eq!(c.post("/api/companion", json!({"kind": "start"})).await.0, StatusCode::CONFLICT);
+    let t = c.get("/api/today").await.1;
+    assert_eq!(t["day"]["tracking"], true);
+    assert!(t["day"]["events"][0]["txt"].as_str().unwrap().contains("im Web gestartet"));
+    // Vorschau: Zeitpunkt, Brutto, Pause, Netto; ein Ende vor dem Beginn geht nicht (die Uhr läuft sekundengenau)
+    tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+    let (st, p) = c.post("/api/tracking/stop-preview", json!({})).await;
+    assert_eq!(st, StatusCode::OK, "{p}");
+    assert!(p["gross"].is_number() && p["net"].is_number() && p["pause"].is_number() && p["at"].is_number());
+    assert_eq!(c.post("/api/tracking/stop-preview", json!({"at": 0})).await.0, StatusCode::CONFLICT);
+    assert_eq!(c.post("/api/companion", json!({"kind": "stopat"})).await.0, StatusCode::BAD_REQUEST);
+    // Beenden: danach läuft nichts mehr, Fortsetzen geht (Lücke zählt nicht)
+    assert_eq!(c.post("/api/companion", json!({"kind": "stop"})).await.0, StatusCode::OK);
+    let t = c.get("/api/today").await.1;
+    assert_eq!((t["day"]["tracking"].clone(), t["day"]["events"].as_array().unwrap().last().unwrap()["k"].clone()), (json!(false), json!("stop")));
+    assert_eq!(c.post("/api/companion", json!({"kind": "stop"})).await.0, StatusCode::CONFLICT);
+    assert_eq!(c.post("/api/companion", json!({"kind": "start"})).await.0, StatusCode::OK);
+
+    // Ein gekoppelter Companion darf nicht „beenden“ melden (das ist Sache der Weboberfläche)
+    let code = c.post("/api/devices/pair-code", json!({})).await.1["code"].as_str().unwrap().to_string();
+    let mut dev = c.fresh();
+    dev.cookie = None;
+    let token = dev.post("/api/device/pair", json!({"code": code, "name": "Mac", "os": "macos", "version": "1.0.0"})).await.1["token"].as_str().unwrap().to_string();
+    let at = chrono::Utc::now().to_rfc3339();
+    let (st, r) = dev.call_h(Method::POST, "/api/device/events", Some(json!({"events": [{"seq": 1, "kind": "stop", "at": at}]})), Some(&token)).await;
+    assert_eq!(st, StatusCode::OK, "{r}");
+    assert_eq!(r["results"][0]["ok"], false);
+    assert_eq!(c.get("/api/today").await.1["day"]["tracking"], true);
+}
+
+#[tokio::test]
+async fn web_stop_at_manual_time_with_preview() {
+    let mut c = Client::new().await;
+    c.login_andre().await;
+    // Demo-Uhr: 15:00; Vorschau für ein Ende um 13:00 (Brutto/Netto bis dahin), Zukunft und vor Beginn gehen nicht
+    let now = 900;
+    let (st, p) = c.post("/api/tracking/stop-preview", json!({"at": 780, "now": now})).await;
+    assert_eq!(st, StatusCode::OK, "{p}");
+    assert_eq!(p["at"], 780.0);
+    assert!(p["gross"].as_f64().unwrap() > 0.0 && p["net"].as_f64().unwrap() <= p["gross"].as_f64().unwrap());
+    let later = c.post("/api/tracking/stop-preview", json!({"at": 840, "now": now})).await.1["gross"].as_f64().unwrap();
+    assert!(later > p["gross"].as_f64().unwrap());
+    assert_eq!(c.post("/api/tracking/stop-preview", json!({"at": 950, "now": now})).await.0, StatusCode::CONFLICT);
+    assert_eq!(c.post("/api/tracking/stop-preview", json!({"at": 100, "now": now})).await.0, StatusCode::CONFLICT);
+    // Die Vorschau ändert nichts
+    assert_eq!(c.get(&format!("/api/today?now={now}")).await.1["day"]["tracking"], true);
+    // Beenden mit gewünschtem Ende: alles danach entfällt, Zeit läuft nicht weiter
+    assert_eq!(c.post("/api/companion", json!({"kind": "stopat", "until": 780, "now": now})).await.0, StatusCode::OK);
+    let a = c.get(&format!("/api/today?now={now}")).await.1;
+    let b = c.get("/api/today?now=1100").await.1;
+    assert_eq!((a["day"]["tracking"].clone(), a["day"]["ended"].clone()), (json!(false), json!(780.0)));
+    assert_eq!(a["today"]["counted"], b["today"]["counted"]);
+    assert_eq!(a["today"]["gross"].as_f64().unwrap(), p["gross"].as_f64().unwrap());
+    assert!(a["day"]["segs"].as_array().unwrap().iter().all(|s| s["to"].as_f64().unwrap() <= 780.0));
+}
+
+#[tokio::test]
+async fn long_tracking_mail_and_midnight_carry_over() {
+    let (port, inbox) = fake_smtp().await;
+    let mut c = Client::real().await;
+    assert_eq!(c.login("chef@example.de", "Sehr-Langes-Passwort-42").await, StatusCode::OK);
+    assert_eq!(smtp_settings(&mut c, port, true).await, StatusCode::OK);
+    let app = c.app.clone();
+    let (today, _) = app.clock(None);
+    // Tracking seit 08:00, jetzt 20:00 (12 h): Hinweis genau einmal, mit Link und Brutto/Netto
+    let mut day = tickly_core::DayState::empty(480.0);
+    day.web_start(480.0).unwrap();
+    let uid = c.get("/api/session").await.1["me"]["id"].as_str().unwrap().to_string();
+    { let mut conn = app.pool.acquire().await.unwrap(); db::put_day(&mut conn, &uid, today, &day).await.map_err(|e| e.1).unwrap(); }
+    assert_eq!(tickly_api::tracking::tick_at(&app, today, 9.0 * 60.0).await.unwrap(), 0, "erst 1 h: kein Hinweis");
+    assert_eq!(tickly_api::tracking::tick_at(&app, today, 20.0 * 60.0).await.unwrap(), 1);
+    assert_eq!(tickly_api::tracking::tick_at(&app, today, 20.5 * 60.0).await.unwrap(), 0, "höchstens einmal am Tag");
+    let mails = wait_mails(&inbox, 1).await;
+    let m = &mails[0];
+    assert!(m.contains("chef@example.de") && m.contains("Läuft dein Tracking noch?") && m.contains("08:00") && m.contains("#/dashboard"), "{}", &m[..m.len().min(1200)]);
+    assert!(m.contains("12:00 Stunden Brutto"), "{}", &m[..m.len().min(1200)]);
+    // Schwelle 0 = aus
+    let mut reg = c.get("/api/snapshot").await.1["reg"].clone();
+    reg["longTrackHours"] = json!(0);
+    assert_eq!(c.put("/api/admin/registration", reg).await.0, StatusCode::OK);
+    sqlx::query("DELETE FROM track_alerts").execute(&app.pool).await.unwrap();
+    assert_eq!(tickly_api::tracking::tick_at(&app, today, 20.0 * 60.0).await.unwrap(), 0);
+
+    // Ohne Companion läuft das Tracking über Mitternacht weiter; mit gekoppeltem Companion macht das dessen Rechner
+    let tomorrow = today + chrono::Duration::days(1);
+    assert_eq!(tickly_api::tracking::tick_at(&app, tomorrow, 5.0).await.unwrap(), 0);
+    let mut conn = app.pool.acquire().await.unwrap();
+    let next = db::get_day(&mut conn, &uid, tomorrow).await.map_err(|e| e.1).unwrap().expect("Fortsetzung");
+    assert!(next.tracking && next.segs[0].from == 0.0);
+    let prev = db::get_day(&mut conn, &uid, today).await.map_err(|e| e.1).unwrap().unwrap();
+    assert_eq!(prev.segs.last().unwrap().to, Some(1440.0));
 }

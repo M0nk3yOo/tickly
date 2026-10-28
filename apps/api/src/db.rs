@@ -86,9 +86,13 @@ pub struct RegPolicy {
     /// Passwort zurücksetzen per Sicherheitsfragen; bei der Registrierung werden dann drei Fragen verlangt.
     #[serde(default = "default_true")]
     pub sec_questions: bool,
+    /// Läuft das Tracking so viele Stunden (Brutto), bekommt der Benutzer eine Mail und einen Hinweis (0 = aus).
+    #[serde(default = "default_long_track")]
+    pub long_track_hours: u32,
 }
 
 fn default_true() -> bool { true }
+fn default_long_track() -> u32 { 10 }
 
 fn default_edit_days() -> u32 { 90 }
 fn default_grace() -> u32 { 7 }
@@ -96,7 +100,7 @@ fn default_session_days() -> u32 { 30 }
 
 impl Default for RegPolicy {
     fn default() -> Self {
-        RegPolicy { open: true, approval: true, domains: String::new(), weekly: 40.0, passkey_prompt: true, min_pw: MIN_PW, mfa_required: false, mfa_grace_days: 7, mfa_required_since: None, session_days: 30, edit_days_back: 90, verify_email: false, verify_email_since: None, sec_questions: true }
+        RegPolicy { open: true, approval: true, domains: String::new(), weekly: 40.0, passkey_prompt: true, min_pw: MIN_PW, mfa_required: false, mfa_grace_days: 7, mfa_required_since: None, session_days: 30, edit_days_back: 90, verify_email: false, verify_email_since: None, sec_questions: true, long_track_hours: 10 }
     }
 }
 

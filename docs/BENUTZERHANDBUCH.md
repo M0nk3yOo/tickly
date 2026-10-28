@@ -20,7 +20,15 @@
 - **Ring:** Heute gezählte Arbeitszeit (mit Sekunden) im Verhältnis zum Tagessoll. Läuft sie, zählt die Anzeige mit.
 - **Arbeitsbeginn, Brutto, Pause, voraussichtliches Ende:** Das Ende ergibt sich, wenn du ab jetzt durcharbeitest.
 - **Wochen-/Monatssaldo, Überstundenkonto:** Feiertage, Urlaub und Krankheit senken das Soll auf 0 – sie erzeugen kein Minus. Zeitausgleich baut Überstunden bewusst ab.
-- **Stoppen/Fortsetzen:** Hält die Zeiterfassung an (Pause zählt nicht). Beendet wird der Tag durch das Beenden des Companion.
+- **Pause/Fortsetzen:** Hält die Zeiterfassung an (die Pause zählt nicht, der Tag bleibt offen).
+- **Tracking beenden:** Beendet den Arbeitstag. Vorher zeigt Tickly, **zu welchem Zeitpunkt** beendet wird und was das bedeutet: Brutto (Anwesenheit), Pause und Netto. **Ende festlegen …** beendet mit einer eigenen Uhrzeit, zum Beispiel wenn du es vergessen hast: Alles nach diesem Zeitpunkt wird nicht gezählt, und die Vorschau rechnet Brutto und Netto für die gewählte Zeit aus. Das Ende liegt zwischen Arbeitsbeginn und jetzt. Liegt es in einer Pause, endet die Arbeitszeit am Beginn der Pause. Für frühere Tage nutzt du *Tagesansicht → Zeiten bearbeiten*.
+- Normalerweise machst du nichts davon: Der **Companion** startet das Tracking automatisch und beendet es beim Herunterfahren.
+
+### Nur im Web erfassen (ohne Companion)
+
+Du brauchst den Companion nicht. Auf der Übersicht startest du mit **Im Web starten** und beendest mit **Tracking beenden**. Der Hinweis „Companion nicht aktiv“ bleibt stehen, er ist dann nur eine Information. Beachte: Ohne Companion weiß Tickly nicht, ob du am Rechner bist. Das Tracking läuft, bis du es beendest (über Mitternacht läuft es weiter). Deshalb:
+- Läuft das Tracking **länger als 10 Stunden** (Brutto), erscheint ein Hinweis auf der Übersicht und du bekommst eine **Mail** („Läuft dein Tracking noch?“), höchstens einmal am Tag. Der Administrator kann die Grenze ändern oder abschalten.
+- Mit **Ende festlegen** korrigierst du das Ende, wenn du es vergessen hast.
 - Der heutige Tag erzeugt erst Minus, wenn er beendet ist.
 
 ## Tagesansicht

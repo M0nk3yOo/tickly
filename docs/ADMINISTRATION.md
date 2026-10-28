@@ -16,6 +16,7 @@ Liste mit Status (aktiv, wartet auf Freigabe, eingeladen, gesperrt), Rolle, heut
 
 ## Registrierung & Richtlinien
 
+- **Warnung bei langem Tracking** (Standard 10 Stunden, 0 = aus): Läuft das Tracking eines Benutzers so viele Stunden (Brutto), sieht er einen Hinweis mit Beenden-Knöpfen auf der Übersicht und bekommt (mit SMTP) eine Mail, höchstens einmal am Tag. Besonders nützlich für Benutzer ohne Companion.
 - **Zurücksetzen per Sicherheitsfragen** (Standard: an): Neue Konten mit Passwort wählen bei der Registrierung drei Fragen und können ihr Passwort damit selbst zurücksetzen. Das ist **schwächer** als ein Link per Mail, weil sich Antworten erraten lassen; schalte es aus, wenn du das nicht möchtest. Schutz: alle drei Antworten müssen stimmen, fünf Fehlversuche pro Konto und Stunde sperren diesen Weg, Fehlversuche zählen für die IP-Sperre, ein zweiter Faktor wird nie umgangen, und der Benutzer bekommt eine Mail.
 
 ![Richtlinien](screenshots/12-admin-richtlinien.png)
@@ -52,7 +53,7 @@ Zu viele Fehlversuche (falsches Passwort oder Code, abgelehnter Passkey, ungült
 
 Server, Port, Verschlüsselung (STARTTLS/TLS/keine), Zugangsdaten und Absender, dazu eine **Test-Nachricht** mit genauer Fehlermeldung. Das Passwort wird (mit `TICKLY_SECRET`) verschlüsselt gespeichert und nie wieder angezeigt.
 
-Verwendet für: Bestätigung der E-Mail-Adresse, Passwort zurücksetzen, Einladungen, Hinweis „neue Registrierung wartet“, „Konto freigeschaltet“ und „IP gesperrt“ (die letzten drei abschaltbar). Versand und Fehler stehen im Protokoll („Mail“). Es gibt keine Warteschlange: Schlägt der Versand fehl, wird er nicht wiederholt.
+Verwendet für: Bestätigung der E-Mail-Adresse, Passwort zurücksetzen, Einladungen, Hinweis „Tracking läuft schon sehr lange“, Hinweis „neue Registrierung wartet“, „Konto freigeschaltet“ und „IP gesperrt“ (die letzten drei abschaltbar). Versand und Fehler stehen im Protokoll („Mail“). Es gibt keine Warteschlange: Schlägt der Versand fehl, wird er nicht wiederholt.
 
 ## Sitzungen & Geräte
 

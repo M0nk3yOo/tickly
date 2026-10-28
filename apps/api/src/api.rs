@@ -48,6 +48,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/absences", post(abs_create))
         .route("/absences/{id}", put(abs_update).delete(abs_delete))
         .route("/companion", post(companion))
+        .route("/tracking/stop-preview", post(stop_preview))
         .route("/devices/pair-code", post(device::pair_code))
         .route("/devices/{id}", delete(device::revoke))
         .route("/device/pair", post(device::pair))
@@ -485,7 +486,7 @@ async fn snapshot_json(app: &App, u: &UserRow, today: NaiveDate, now: f64) -> Re
     v["devices"] = Value::Array(device::list_for(app, &u.id).await?);
     let reg = db::reg_policy(&app.pool).await?;
     v["mfa"] = db::mfa_status(&app.pool, u, &reg).await?.json();
-    v["limits"] = json!({ "editDaysBack": reg.edit_days_back });
+    v["limits"] = json!({ "editDaysBack": reg.edit_days_back, "longTrackHours": reg.long_track_hours });
     v["secQ"] = crate::secq::status(app, u).await?;
     v["totp"] = json!({ "enabled": u.totp_enabled, "recoveryLeft": if u.totp_enabled { crate::mfa::recovery_left(app, &u.id).await? } else { 0 } });
     if u.role == "admin" {
@@ -514,7 +515,7 @@ async fn demo_ensure_day(app: &App, u: &UserRow, now: f64) -> Res<()> {
     let mut tx = app.pool.begin().await?;
     if db::get_day(&mut tx, &u.id, app.cfg.demo_today).await?.is_none() {
         let abs = db::absences(&app.pool, &u.id).await?;
-        let ev = Ev { kind: "boot".into(), at: None, now: Some(now), app: None, os: None, answer: None };
+        let ev = Ev { kind: "boot".into(), now: Some(now), ..Default::default() };
         events::apply(app, &mut tx, u, &abs, &ev).await?.ok();
         tx.commit().await?;
     }
@@ -612,7 +613,7 @@ async fn abs_delete(State(app): St, h: HeaderMap, Path(id): Path<i64>) -> Res<Js
 
 /* ---------- Companion über die Web-Oberfläche ---------- */
 /// Im Echtbetrieb steuert die Weboberfläche nur das Tracking; Systemereignisse kommen vom gekoppelten Gerät.
-const WEB_KINDS: [&str; 4] = ["pause", "start", "answer", "tick"];
+const WEB_KINDS: [&str; 6] = ["pause", "start", "answer", "tick", "stop", "stopat"];
 
 async fn companion(State(app): St, h: HeaderMap, Json(ev): Json<Ev>) -> Res<Json<Value>> {
     let u = auth(&app, &h, false).await?;
@@ -620,11 +621,27 @@ async fn companion(State(app): St, h: HeaderMap, Json(ev): Json<Ev>) -> Res<Json
     let abs = db::absences(&app.pool, &u.id).await?;
     let mut ev = ev;
     ev.at = None;
+    ev.web = !app.cfg.demo;
     let mut tx = app.pool.begin().await?;
     let res = events::apply(&app, &mut tx, &u, &abs, &ev).await?;
     if let Err(m) = res { return conflict(m) }
     tx.commit().await?;
     Ok(Json(json!({ "ok": true })))
+}
+
+#[derive(Deserialize)]
+struct PreviewReq { at: Option<f64>, now: Option<f64> }
+
+/// Was passiert, wenn das Tracking jetzt oder zu einem bestimmten Zeitpunkt beendet wird: Zeitpunkt, Brutto, Pause, Netto.
+async fn stop_preview(State(app): St, h: HeaderMap, Json(r): Json<PreviewReq>) -> Res<Json<Value>> {
+    let u = auth(&app, &h, false).await?;
+    let (today, now) = app.clock(r.now);
+    let mut c = db::Calc::load(&app, &u, today, now).await?;
+    if !c.has_day { return conflict("Heute läuft kein Tracking.") }
+    let at = r.at.unwrap_or(now);
+    c.day.stop_web(now, at).map_err(|m| ApiError(StatusCode::CONFLICT, m))?;
+    let s = c.with(|x| day_stat(x, today));
+    Ok(Json(json!({ "at": c.day.ended, "gross": s.gross, "net": s.net, "pause": s.gross - s.net, "counted": s.counted, "soll": s.soll, "start": s.start })))
 }
 
 /* ---------- Administration ---------- */
@@ -634,6 +651,7 @@ async fn admin_registration(State(app): St, h: HeaderMap, Extension(ip): Extensi
     if !(1.0..=80.0).contains(&p.weekly) || !(MIN_PW..=128).contains(&p.min_pw) { return bad(format!("Ungültige Werte – das Passwort braucht mindestens {MIN_PW} Zeichen")) }
     if p.mfa_grace_days > 365 { return bad("Die Karenzzeit darf höchstens 365 Tage betragen") }
     if !(1..=365).contains(&p.session_days) { return bad("Die Sitzungsdauer muss zwischen 1 und 365 Tagen liegen") }
+    if p.long_track_hours > 24 { return bad("Die Warnung bei langem Tracking: höchstens 24 Stunden (0 = aus)") }
     if p.edit_days_back > 3650 { return bad("Nachträgliches Bearbeiten: höchstens 3650 Tage rückwirkend") }
     // Die Karenzzeit beginnt, wenn die Pflicht eingeschaltet wird – nicht rückwirkend und nicht bei jedem Speichern neu
     let old = db::reg_policy(&app.pool).await?;

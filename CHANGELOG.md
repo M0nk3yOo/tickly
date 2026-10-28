@@ -2,6 +2,8 @@
 
 ## Unveröffentlicht
 
+- **Zeiterfassung rein im Web:** Das Tracking lässt sich ohne Companion starten („Im Web starten“) und beenden. „Tracking beenden“ zeigt vorher den Zeitpunkt samt Brutto, Pause und Netto; „Ende festlegen …“ beendet mit eigener Uhrzeit (alles danach entfällt, Vorschau für Brutto/Netto). Der bisherige Knopf „Stoppen“ heißt jetzt „Pause“. Der Hinweis „Companion nicht aktiv“ bleibt. Ohne Companion läuft das Tracking über Mitternacht weiter.
+- **Mail bei langem Tracking:** Läuft das Tracking 10 Stunden (Brutto; einstellbar, 0 = aus), erscheint ein Hinweis auf der Übersicht und eine Mail „Läuft dein Tracking noch?“, höchstens einmal am Tag.
 - **Passwort zurücksetzen per Sicherheitsfragen:** Bei der Registrierung (und bei der Einrichtung) wählt man drei Fragen aus Vorschlägen oder eigene; unter „Passwort vergessen“ lässt sich das Passwort damit selbst zurücksetzen. Alle Antworten müssen stimmen (Groß-/Kleinschreibung, Leer- und Satzzeichen egal), nur als Hash gespeichert, Sperre nach 5 Fehlversuchen je Konto, IP-Sperre, Hinweis-Mail, alle Sitzungen enden, der zweite Faktor bleibt. Bestehende Konten werden per Hinweis zum Festlegen aufgefordert; Fragen sind unter Einstellungen änderbar. Administratoren können den Weg abschalten (Registrierung & Richtlinien). Sicherungen enthalten die Antworten.
 - **Initialpasswort durch Administratoren:** „Neues Passwort setzen“ in der Benutzerverwaltung (eigenes oder zufällig erzeugt). Der Benutzer muss es beim nächsten Passwort-Login ändern, bis dahin ist die Sitzung gesperrt. Ersetzt die bisherige Attrappe „Passwort-Reset senden“.
 - Fehlerbehebung: In der Benutzerverwaltung wurde der „Selbst“-Schutz fest auf das Demo-Konto bezogen.

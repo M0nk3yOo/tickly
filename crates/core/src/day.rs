@@ -267,6 +267,62 @@ impl DayState {
         Ok(())
     }
 
+    /// Tracking im Web starten oder fortsetzen (ohne Companion).
+    pub fn web_start(&mut self, now: f64) -> Result<(), &'static str> {
+        if self.tracking {
+            return Err("Tracking läuft bereits.");
+        }
+        let txt = if self.segs.is_empty() {
+            "Tracking im Web gestartet · Arbeitstag beginnt".to_string()
+        } else if self.stop == Some(Stop::Pause) {
+            format!("Tracking im Web fortgesetzt · {} Min. Pause nicht gezählt", (now - self.ended.unwrap_or(now)).round())
+        } else {
+            "Tracking im Web gestartet · Lücke wird nicht als Arbeitszeit gezählt".to_string()
+        };
+        self.begin(now, now, txt);
+        Ok(())
+    }
+
+    /// Im Web beenden: jetzt (`at == now`) oder rückwirkend zu einem früheren Zeitpunkt `at` (Minuten seit Mitternacht).
+    /// Alles nach `at` entfällt; liegt `at` in einer Lücke (Pause), endet die Arbeitszeit am Beginn dieser Lücke.
+    pub fn stop_web(&mut self, now: f64, at: f64) -> Result<(), String> {
+        let paused = !self.tracking && self.stop == Some(Stop::Pause);
+        if !self.tracking && !paused {
+            return Err("Es läuft kein Tracking.".into());
+        }
+        let Some(first) = self.segs.first().map(|s| s.from) else { return Err("Es gibt noch nichts zu beenden.".into()) };
+        if at > now + 1e-6 {
+            return Err("Das Ende darf nicht in der Zukunft liegen.".into());
+        }
+        if at <= first {
+            return Err(format!("Das Ende muss nach dem Arbeitsbeginn ({}) liegen.", hm(first)));
+        }
+        let at = if paused { at.min(self.ended.unwrap_or(at)) } else { at };
+        self.segs.retain(|s| s.from < at);
+        for s in &mut self.segs {
+            s.to = Some(match s.to { Some(t) => t.min(at), None => at.max(s.from) });
+        }
+        while self.segs.last().is_some_and(|s| s.kind == SegKind::Off) {
+            self.segs.pop();
+        }
+        let end = self.segs.last().and_then(|s| s.to).unwrap_or(at);
+        self.events.retain(|e| e.t <= end);
+        let txt = if paused {
+            format!("Tracking im Web beendet · Arbeitsende {} (Beginn der Pause)", hm(end))
+        } else if (now - end).abs() < 0.5 {
+            "Tracking im Web beendet · Arbeitsende".to_string()
+        } else {
+            format!("Tracking im Web beendet · Ende nachträglich auf {} gesetzt (gemeldet um {})", hm(end), hm(now))
+        };
+        self.ev(end, "stop", txt);
+        self.tracking = false;
+        self.ended = Some(end);
+        self.stop = Some(Stop::Quit);
+        self.declined = None;
+        self.last_beat = Some(end);
+        Ok(())
+    }
+
     /// Companion richtig beendet (nicht nur das Fenster geschlossen): Arbeitsende.
     pub fn quit(&mut self, now: f64) -> Result<(), &'static str> {
         self.end_session(now, Stop::Quit, "Companion beendet (nicht nur Fenster) · Tracking gestoppt · Arbeitsende")

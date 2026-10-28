@@ -25,7 +25,7 @@ Eine kleine App auf Windows und macOS erkennt Arbeitsbeginn, Sperre, Pausen und 
 
 **Auswerten** – Tagesansicht mit Zeitverlauf und Programmwechseln, Wochen-, Monats- und Jahresstatistik, App-Rangliste mit Symbolen, CSV-Export, Hell/Dunkel/System.
 
-**Verwalten** – Benutzer mit offener oder per Einladung geschlossener Registrierung und Freigabe, **Passkeys**, **Authenticator-App (TOTP)** und optional **Pflicht zu MFA mit Karenzzeit**, **Passwort selbst zurücksetzen** (Mail-Link oder Sicherheitsfragen) und **Initialpasswort durch Administratoren** mit erzwungener Änderung, Sitzungen und Geräte mit **IP und Land** (beendbar), **Protokoll**, **automatische IP-Sperre** nach Fehlversuchen (auch hinter Cloudflare mit echter Besucher-IP), **SMTP per Oberfläche** (E-Mail-Bestätigung, Passwort zurücksetzen, Einladungen, Hinweise), **Sicherung und Wiederherstellung** mit Zeitplan, getrenntem Verzeichnis und Verschlüsselung.
+**Verwalten** – Benutzer mit offener oder per Einladung geschlossener Registrierung und Freigabe, **Passkeys**, **Authenticator-App (TOTP)** und optional **Pflicht zu MFA mit Karenzzeit**, **Passwort selbst zurücksetzen** (Mail-Link oder Sicherheitsfragen) und **Initialpasswort durch Administratoren** mit erzwungener Änderung; **Zeiterfassung auch rein im Web** (Start, Beenden mit Vorschau von Brutto/Netto, eigenes Ende, Mail bei über 10 Stunden), Sitzungen und Geräte mit **IP und Land** (beendbar), **Protokoll**, **automatische IP-Sperre** nach Fehlversuchen (auch hinter Cloudflare mit echter Besucher-IP), **SMTP per Oberfläche** (E-Mail-Bestätigung, Passwort zurücksetzen, Einladungen, Hinweise), **Sicherung und Wiederherstellung** mit Zeitplan, getrenntem Verzeichnis und Verschlüsselung.
 
 ## Ansichten
 

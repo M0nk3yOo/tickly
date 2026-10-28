@@ -367,3 +367,65 @@ fn app_names_are_free_form_and_classified() {
     assert_eq!(crate::app_label("code"), "VS Code");
     assert_eq!(crate::app_label("Notepad++"), "Notepad++");
 }
+
+fn web_day() -> DayState {
+    let mut day = DayState::empty(8.0 * 60.0);
+    day.web_start(8.0 * 60.0).unwrap();
+    day
+}
+
+#[test]
+fn web_tracking_starts_and_stops_without_companion() {
+    let mut day = web_day();
+    assert!(day.tracking && day.track() == crate::Track::Running);
+    assert_eq!(day.web_start(500.0), Err("Tracking läuft bereits."));
+    day.stop_web(17.0 * 60.0, 17.0 * 60.0).unwrap();
+    assert!(!day.tracking && day.is_closed());
+    assert_eq!(day.ended, Some(1020.0));
+    assert_eq!(day.segs.len(), 1);
+    assert_eq!(day.segs[0].to, Some(1020.0));
+    assert_eq!(day.events.last().unwrap().k, "stop");
+    // beendet: nichts mehr zu beenden, aber wieder startbar (Lücke zählt nicht)
+    assert!(day.stop_web(1100.0, 1100.0).is_err());
+    day.web_start(18.0 * 60.0).unwrap();
+    assert_eq!(day.segs.len(), 3);
+    assert_eq!(day.segs[1].kind, SegKind::Off);
+}
+
+#[test]
+fn web_stop_with_manual_end_cuts_later_activity() {
+    // 08:00 an, 12:00–12:30 Pause, 12:30 fortgesetzt, jetzt 18:30
+    let mut day = web_day();
+    day.pause(12.0 * 60.0).unwrap();
+    day.web_start(12.5 * 60.0).unwrap();
+    let now = 18.5 * 60.0;
+    // Ende in der Lücke: Arbeitszeit endet am Beginn der Pause
+    let mut a = day.clone();
+    a.stop_web(now, 12.25 * 60.0).unwrap();
+    assert_eq!(a.ended, Some(720.0));
+    assert_eq!(a.segs.len(), 1);
+    // Ende nach der Pause: der laufende Abschnitt wird gekürzt
+    let mut b = day.clone();
+    b.stop_web(now, 16.75 * 60.0).unwrap();
+    assert_eq!(b.ended, Some(1005.0));
+    assert_eq!(b.segs.last().unwrap().to, Some(1005.0));
+    assert!(b.events.iter().all(|e| e.t <= 1005.0));
+    assert!(b.events.last().unwrap().txt.contains("nachträglich auf 16:45"));
+    // Vor dem Beginn oder in der Zukunft geht nicht
+    assert!(day.clone().stop_web(now, 7.0 * 60.0).unwrap_err().contains("nach dem Arbeitsbeginn"));
+    assert!(day.clone().stop_web(now, now + 5.0).unwrap_err().contains("Zukunft"));
+    // Das Ergebnis rechnet normal: 08:00–16:45 = 8:45 brutto
+    let fx = Fixture::new();
+    let s = fx.with_day(&b, now, |c| day_stat(c, c.today));
+    assert!((s.gross - (12.0 * 60.0 - 8.0 * 60.0 + (16.75 - 12.5) * 60.0)).abs() < 1e-6);
+}
+
+#[test]
+fn web_stop_from_pause_ends_at_pause_start() {
+    let mut day = web_day();
+    day.pause(15.0 * 60.0).unwrap();
+    day.stop_web(16.0 * 60.0, 16.0 * 60.0).unwrap();
+    assert_eq!(day.ended, Some(900.0));
+    assert!(day.is_closed());
+    assert!(day.events.last().unwrap().txt.contains("Beginn der Pause"));
+}

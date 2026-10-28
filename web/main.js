@@ -357,6 +357,21 @@ const H = {
     await api('POST', '/companion', { kind: k, now: nowQ(), os: S.os });
     toast({ newday: 'Neuer Arbeitstag – Rechnerstart ' + hm(S.now) + ' gemerkt', boot: 'Rechner gestartet', lock: 'Bildschirm gesperrt', unlock: 'Entsperrt', pause: 'Tracking gestoppt – die Pause wird nicht gezählt', quit: 'Companion beendet – Tracking gestoppt', shutdown: 'Rechner heruntergefahren', start: 'Tracking läuft' }[k]); await sync();
   },
+  /* Zeiterfassung im Web: Beenden jetzt oder mit eigenem Ende, mit Vorschau von Brutto und Netto */
+  async stopOpen(el) { S.modal = { type: 'stop', mode: el.dataset.m, at: Math.floor(S.now), prev: null, err: '' }; renderModalOnly(); await H.stopPreview(); },
+  async stopMode(el, e) { e.preventDefault(); S.modal.mode = S.modal.mode === 'custom' ? 'now' : 'custom'; S.modal.prev = null; S.modal.err = ''; renderModalOnly(); await H.stopPreview(); },
+  async stopPreview() {
+    const m = S.modal; if (!m || m.type !== 'stop') return;
+    const mode = m.mode, at = m.at;
+    try { const r = await api('POST', '/tracking/stop-preview', { at: mode === 'custom' ? at : null, now: nowQ() }); if (S.modal === m && m.mode === mode) { m.prev = r; m.err = ''; } }
+    catch (e) { if (S.modal === m && m.mode === mode) { m.prev = null; m.err = e.message; } }
+    renderModalOnly();
+  },
+  async stopDo() {
+    const m = S.modal;
+    if (m.mode === 'custom') await api('POST', '/companion', { kind: 'stopat', until: m.at, now: nowQ() }); else await api('POST', '/companion', { kind: 'stop', now: nowQ() });
+    closeModal(); toast('Tracking beendet – Ende ' + hm(m.prev ? m.prev.at : S.now)); await sync();
+  },
   async cAnswer(el) {
     await api('POST', '/companion', { kind: 'answer', answer: el.dataset.v, now: nowQ() });
     toast(el.dataset.v === 'no' ? 'Okay – das Tracking bleibt aus' : 'Tracking gestartet'); await sync();
@@ -474,6 +489,8 @@ const H = {
   async confirmOk() { const f = S.modal.fn; closeModal(); await f(); }
 };
 async function afterChange(path) {
+  // Erst nach der Antwort neu zeichnen (nicht im Ereignis des Eingabefelds, das gerade den Fokus verliert)
+  if (path === 'modal.at') { if (S.modal) { S.modal.prev = null; S.modal.err = ''; } return H.stopPreview(); }
   if (path.startsWith('set.')) return saveSet();
   if (path.startsWith('reg.')) return saveReg();
   render();

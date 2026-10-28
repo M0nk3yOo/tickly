@@ -33,6 +33,7 @@ async fn main() {
     let app = Arc::new(App::new(cfg, pool));
     db::seed_if_empty(&app).await.unwrap_or_else(|e| panic!("Erste Daten konnten nicht angelegt werden: {}", e.1));
     tickly_api::backup::spawn_scheduler(app.clone());
+    tickly_api::tracking::spawn_watch(app.clone());
     tickly_api::netsec::spawn_housekeeping(app.pool.clone(), app.cfg.log_retention_days);
     let listener = tokio::net::TcpListener::bind(&bind).await.unwrap_or_else(|e| panic!("Port {bind} nicht verfügbar: {e}"));
     axum::serve(listener, api::router(app).into_make_service_with_connect_info::<std::net::SocketAddr>()).with_graceful_shutdown(async { let _ = tokio::signal::ctrl_c().await; }).await.unwrap();
