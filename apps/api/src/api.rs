@@ -32,6 +32,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/health", get(health))
         .route("/config", get(config))
         .route("/session", get(session))
+        .route("/setup", post(setup))
         .route("/auth/login", post(login))
         .route("/auth/logout", post(logout))
         .route("/auth/register", post(register))
@@ -142,6 +143,8 @@ async fn config(State(app): St) -> Res<Json<Value>> {
         "origin": app.cfg.public_url.as_str().trim_end_matches('/'), "rpId": app.cfg.rp_id,
         // Nur mit dem bekannten Standard-Passwort im Demo-Modus zeigt die Oberfläche Demo-Zugänge an.
         "demoHint": app.cfg.demo && app.cfg.demo_password == DEFAULT_DEMO_PASSWORD,
+        // Noch kein Benutzer: Die Oberfläche zeigt die Ersteinrichtung
+        "setup": app.setup_code.lock().unwrap().is_some(),
     })))
 }
 
@@ -221,10 +224,36 @@ async fn logout(State(app): St, h: HeaderMap) -> Res<Response> {
 }
 
 #[derive(Deserialize)]
+struct SetupReq { code: String, name: String, email: String, password: String }
+
+/// Ersteinrichtung: legt den ersten Administrator an. Erfordert den Einrichtungscode aus dem Server-Protokoll.
+async fn setup(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientIp>, Json(r): Json<SetupReq>) -> Res<Response> {
+    netsec::guard(&app, ip).await?;
+    let expected = app.setup_code.lock().unwrap().clone();
+    let Some(expected) = expected else { return conflict("Die Einrichtung ist bereits abgeschlossen. Bitte melde dich an.") };
+    let (name, email) = (r.name.trim().to_string(), r.email.trim().to_string());
+    let (a, b) = (r.code.trim().as_bytes(), expected.as_bytes());
+    if a.len() != b.len() || a.iter().zip(b).fold(0u8, |d, (x, y)| d | (x ^ y)) != 0 {
+        netsec::failure(&app, "setup", ip, &h, None, Some(&email), "Einrichtungscode falsch").await;
+        return forbidden("Der Einrichtungscode stimmt nicht. Du findest ihn im Server-Protokoll (docker compose logs api).");
+    }
+    if name.is_empty() { return bad("Bitte Namen eingeben") }
+    if !valid_email(&email) { return bad("Bitte gültige E-Mail-Adresse eingeben") }
+    if let Some(m) = password_problem(&r.password, MIN_PW) { return bad(m) }
+    let Some(id) = db::create_first_admin(&app, &name, &email, &r.password).await? else { return conflict("Die Einrichtung ist bereits abgeschlossen. Bitte melde dich an.") };
+    netsec::log(&app, "setup", true, ip, &h, Some(&id), Some(&email), "Administrator bei der Einrichtung angelegt").await;
+    tracing::info!("Administrator {email} bei der Einrichtung angelegt");
+    let me = db::user_by_id(&app.pool, &id).await?.expect("Konto");
+    let c = start_session(&app, &me, false, &ip, &h).await?;
+    Ok(([c], Json(json!({ "ok": true }))).into_response())
+}
+
+#[derive(Deserialize)]
 struct RegisterReq { name: String, email: String, password: Option<String>, #[serde(rename = "startBal")] start_bal: Option<f64> }
 
 async fn register(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientIp>, Json(r): Json<RegisterReq>) -> Res<Response> {
     netsec::guard(&app, ip).await?;
+    if app.setup_code.lock().unwrap().is_some() { return forbidden("Die Einrichtung ist noch nicht abgeschlossen") }
     let reg = db::reg_policy(&app.pool).await?;
     let (name, email) = (r.name.trim().to_string(), r.email.trim().to_string());
     if name.is_empty() { return bad("Bitte Namen eingeben") }

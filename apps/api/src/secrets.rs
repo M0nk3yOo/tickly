@@ -34,7 +34,7 @@ impl Secrets {
     }
 
     pub fn with(secret: &str) -> Secrets {
-        assert!(secret.chars().count() >= MIN_LEN, "TICKLY_SECRET ist zu kurz: mindestens {MIN_LEN} Zeichen (z. B. `openssl rand -base64 32`)");
+        assert!(secret.chars().count() >= MIN_LEN, "TICKLY_SECRET ist zu kurz: mindestens {MIN_LEN} Zeichen (z. B. `openssl rand -base64 48`)");
         let mut key = [0u8; 32];
         Hkdf::<Sha256>::new(Some(b"tickly-v1"), secret.as_bytes()).expand(b"data", &mut key).expect("HKDF");
         Secrets { key: Some(key) }

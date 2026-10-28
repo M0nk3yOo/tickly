@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Startet eine lokale PostgreSQL-Instanz (Port 5433, Daten in .pgdata) und den Server.
-# Demo-Modus (Standard): TICKLY_DEMO=1. Echtbetrieb: TICKLY_DEMO=0 ADMIN_EMAIL=… ADMIN_PASSWORD=… scripts/dev.sh
+# Demo-Modus (Standard): TICKLY_DEMO=1. Echtbetrieb: TICKLY_DEMO=0 scripts/dev.sh (Einrichtung im Browser, Code im Log)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"

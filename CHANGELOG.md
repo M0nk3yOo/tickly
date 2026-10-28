@@ -1,5 +1,12 @@
 # Änderungen
 
+## Unveröffentlicht
+
+- **Ersteinrichtung im Browser:** Der erste Administrator wird nicht mehr über `ADMIN_EMAIL`/`ADMIN_PASSWORD` in der Compose-Datei angelegt, sondern beim ersten Aufruf in der Weboberfläche. Ein Einrichtungscode aus dem Server-Protokoll schützt davor, dass ein Fremder die Einrichtung zuerst abschließt. Bis dahin ist die Registrierung gesperrt. (`ADMIN_EMAIL`/`ADMIN_PASSWORD` funktionieren für Skripte weiterhin, stehen aber nicht mehr in Compose und `.env.example`.)
+- Eine leere Installation (noch kein Benutzer) wird nicht automatisch gesichert; so verdrängt sie im Notfall keine guten Sicherungen.
+- `.env.example` und Installationsanleitung: Befehle zum Erzeugen langer, sicherer Werte für `DB_PASSWORD` und `TICKLY_SECRET`.
+- Fehlerbehebung: Das Dashboard blieb leer, wenn ein Konto weniger als 61 Tage Verlauf hatte (betraf neue Konten im Echtbetrieb).
+
 ## 0.9.1
 
 Erste veröffentlichte Version; Funktionsumfang wie unter 0.9.0 beschrieben (0.9.0 wurde nie veröffentlicht).

@@ -250,6 +250,8 @@ async fn prune(app: &App, kind: &str, keep: u32) -> Res<()> {
 pub async fn run_due(app: &App, now: DateTime<Utc>) -> Option<String> {
     let p = policy(&app.pool).await.ok()?;
     if !p.enabled { return None }
+    // Eine leere Installation (noch kein Benutzer) wird nicht gesichert: Der leere Stand würde im Notfall gute Sicherungen verdrängen
+    if sqlx::query_scalar::<_, i64>("SELECT count(*) FROM users").fetch_one(&app.pool).await.ok()? == 0 { return None }
     let t = NaiveTime::parse_from_str(&p.time, "%H:%M").ok()?;
     let local = now.with_timezone(&app.cfg.tz);
     let scheduled = app.cfg.tz.from_local_datetime(&local.date_naive().and_time(t)).earliest()?.with_timezone(&Utc);

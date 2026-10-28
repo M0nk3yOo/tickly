@@ -10,7 +10,8 @@
 
 ```sh
 scripts/dev.sh                     # PostgreSQL (Port 5433, Daten in .pgdata) + Server im Demo-Modus, http://localhost:3000
-TICKLY_DEMO=0 ADMIN_EMAIL=… ADMIN_PASSWORD='…' scripts/dev.sh   # Echtbetrieb ohne Demo-Daten
+TICKLY_DEMO=0 scripts/dev.sh                                 # Echtbetrieb ohne Demo-Daten: Einrichtung im Browser, Code im Terminal
+# (für Skripte weiterhin möglich: ADMIN_EMAIL=… ADMIN_PASSWORD='…' legt den ersten Administrator direkt an)
 ```
 
 `web/` wird direkt ausgeliefert – nach einer Änderung genügt Neuladen im Browser. Rust-Änderungen: Server neu starten (`cargo run` baut neu).

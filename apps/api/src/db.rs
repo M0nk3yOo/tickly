@@ -379,9 +379,28 @@ pub async fn seed_if_empty(app: &App) -> Res<()> {
         insert_user(pool, &new_user_id(), name, mail, "admin", "active", Some(&h), &fresh_settings(40.0), false, "", demo::DEFAULT_BASE, today, None).await?;
         tracing::info!("Administrator {mail} angelegt");
     } else {
-        panic!("Es gibt noch keinen Benutzer. Bitte ADMIN_EMAIL, ADMIN_NAME und ADMIN_PASSWORD setzen (siehe .env.example), damit der erste Administrator angelegt wird.");
+        // Ersteinrichtung im Browser. Der Code verhindert, dass ein Fremder, der die Adresse zuerst erreicht, den Administrator anlegt.
+        let code = Uuid::new_v4().simple().to_string();
+        *app.setup_code.lock().unwrap() = Some(code.clone());
+        tracing::warn!("Noch kein Benutzer vorhanden. Öffne {} im Browser und lege den Administrator an. Einrichtungscode: {code}", app.cfg.public_url);
     }
     Ok(())
+}
+
+/// Legt den ersten Administrator an, aber nur, wenn es noch keinen Benutzer gibt (Rückgabe `None`, falls doch).
+pub async fn create_first_admin(app: &App, name: &str, email: &str, password: &str) -> Res<Option<String>> {
+    let mut tx = app.pool.begin().await?;
+    sqlx::query("SELECT pg_advisory_xact_lock(748201)").execute(&mut *tx).await?;
+    let n: i64 = sqlx::query_scalar("SELECT count(*) FROM users").fetch_one(&mut *tx).await?;
+    if n > 0 { return Ok(None) }
+    let id = new_user_id();
+    let today = app.local(Utc::now()).0;
+    sqlx::query("INSERT INTO users (id, name, email, role, status, password_hash, webauthn_id, settings, demo, seed, demo_base, track_start, last_seen_at) VALUES ($1,$2,$3,'admin','active',$4,$5,$6,false,'',$7,$8,now())")
+        .bind(&id).bind(name).bind(email).bind(hash_password(password)).bind(Uuid::new_v4()).bind(Json(fresh_settings(40.0))).bind(demo::DEFAULT_BASE).bind(today)
+        .execute(&mut *tx).await?;
+    tx.commit().await?;
+    *app.setup_code.lock().unwrap() = None;
+    Ok(Some(id))
 }
 
 /* ---------- Hilfen für Antworten ---------- */

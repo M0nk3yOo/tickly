@@ -15,14 +15,22 @@ git clone <dieses Repository> tickly && cd tickly
 cp .env.example .env
 ```
 
+Sichere Werte erzeugst du direkt im Terminal (macOS, Linux, unter Windows in Git Bash oder WSL). Länger ist besser:
+
+```sh
+openssl rand -hex 32        # → DB_PASSWORD (64 Zeichen, nur Hex, damit die Datenbank-Adresse heil bleibt)
+openssl rand -base64 48     # → TICKLY_SECRET (64 Zeichen; "-base64 96" für noch länger)
+```
+
+Beide Werte gehören zusätzlich in deinen Passwortmanager. Das Passwort des Administrators legst du später im Browser fest (siehe [Ersteinrichtung](#ersteinrichtung-im-browser)); ein Passwortmanager erzeugt dafür ein langes Passwort, oder im Terminal: `echo "$(openssl rand -base64 36)-Aa1#"`.
+
 Wichtige Werte in `.env`:
 
 | Variable | Bedeutung |
 |---|---|
 | `PUBLIC_URL` | Öffentliche Adresse, z. B. `https://zeit.example.com`. **Passkeys sind an diese Domain gebunden** – eine spätere Änderung macht sie unbrauchbar. |
-| `DB_PASSWORD` | Passwort der Datenbank (nur im internen Netz erreichbar). Zufällig und lang. |
-| `ADMIN_EMAIL`, `ADMIN_NAME`, `ADMIN_PASSWORD` | Der **erste Administrator**, angelegt beim ersten Start. Passwort mit mind. 14 Zeichen, Groß-/Kleinbuchstaben, Zahl, Sonderzeichen. |
-| `TICKLY_SECRET` | Schlüssel zum **Verschlüsseln** von Sicherungen, TOTP-Geheimnissen und dem SMTP-Passwort (mind. 24 Zeichen, `openssl rand -base64 32`). **Sicher aufbewahren, nie ändern oder verlieren** – ohne ihn sind verschlüsselte Daten nicht mehr lesbar. |
+| `DB_PASSWORD` | Passwort der Datenbank (nur im internen Netz erreichbar). Zufällig und lang, nur Hex-Zeichen: `openssl rand -hex 32`. |
+| `TICKLY_SECRET` | Schlüssel zum **Verschlüsseln** von Sicherungen, TOTP-Geheimnissen und dem SMTP-Passwort (mind. 24 Zeichen, besser länger: `openssl rand -base64 48`). **Sicher aufbewahren, nie ändern oder verlieren** – ohne ihn sind verschlüsselte Daten nicht mehr lesbar. |
 | `CLOUDFLARE_TUNNEL_TOKEN` | Token des Tunnels (siehe unten), nur für `--profile tunnel`. |
 | `BACKUP_PATH` | Pfad für Sicherungen, besser auf einem anderen Laufwerk (siehe [Sicherung](#sicherung)). |
 | `TICKLY_TZ` | Zeitzone für Arbeitstage, Standard `Europe/Berlin`. |
@@ -38,9 +46,18 @@ Weitere Umgebungsvariablen des Servers (selten nötig): `PORT`, `BIND`, `WEBAUTH
 docker compose up -d --build        # nur lokal: http://localhost:3000
 ```
 
-Der erste Build dauert einige Minuten. Beim ersten Start legt der Server das Datenbankschema an und erzeugt den Administrator. Anmelden unter `PUBLIC_URL` (lokal `http://localhost:3000`) mit `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
+Der erste Build dauert einige Minuten. Beim ersten Start legt der Server das Datenbankschema an.
 
-> Das Passwort aus `ADMIN_PASSWORD` wird nur beim **ersten** Start verwendet (wenn es noch keine Benutzer gibt). Danach kannst du die Variablen aus der `.env` entfernen.
+### Ersteinrichtung im Browser
+
+Der erste Administrator wird **nicht in der `.env`**, sondern im Browser angelegt:
+
+1. Einrichtungscode aus dem Protokoll holen: `docker compose logs api | grep Einrichtungscode`
+2. `PUBLIC_URL` öffnen (lokal `http://localhost:3000`). Solange es keinen Benutzer gibt, zeigt Tickly die Einrichtung.
+3. Code, Name, E-Mail und ein Passwort eintragen (mind. 14 Zeichen, Groß-/Kleinbuchstaben, Zahl, Sonderzeichen; gerne deutlich länger, am besten aus einem Passwortmanager). Danach bist du als Administrator angemeldet.
+4. Richte unter *Einstellungen → Sicherheit* einen Passkey oder TOTP ein, denn Administratoren brauchen wie alle einen zweiten Faktor.
+
+Der Code schützt davor, dass jemand, der die Adresse zuerst erreicht, den Administrator anlegt. Er ändert sich bei jedem Neustart, solange noch kein Benutzer existiert, und wird danach nicht mehr gebraucht. Bis zur Einrichtung ist die Registrierung gesperrt, falsche Codes zählen wie Fehlanmeldungen für die IP-Sperre.
 
 Der Port ist an `127.0.0.1` gebunden. **Gib ihn nie direkt ins Internet frei**; öffentlicher Zugang läuft über den Tunnel (oder deinen eigenen Proxy, der die echte Adresse in `CF-Connecting-IP` bzw. `X-Forwarded-For` setzt).
 
@@ -75,7 +92,7 @@ In der Weboberfläche unter **Companion-App → Kopplungscode erzeugen** und den
 
 Wenn nur das Sicherungsverzeichnis übrig ist:
 
-1. Server neu aufsetzen (siehe oben) mit **demselben `TICKLY_SECRET`** und derselben `PUBLIC_URL` (Passkeys sind an die Domain gebunden). `ADMIN_EMAIL`/`ADMIN_PASSWORD` legen einen vorläufigen Administrator an.
+1. Server neu aufsetzen (siehe oben) mit **demselben `TICKLY_SECRET`** und derselben `PUBLIC_URL` (Passkeys sind an die Domain gebunden). Beim ersten Aufruf legst du über die Ersteinrichtung (Code aus `docker compose logs api`) einen vorläufigen Administrator an.
 2. Das gerettete Verzeichnis als `BACKUP_PATH` einbinden (oder die Datei später hochladen).
 3. Als vorläufiger Administrator anmelden → *Administration → Sicherung* → die gewünschte Sicherung wählen → *Wiederherstellen*.
 4. Danach bist du abgemeldet, weil der vorläufige Administrator durch die Wiederherstellung ersetzt wird. **Melde dich mit einem Konto aus der Sicherung an** (Passwort bzw. Passkey/TOTP wie vorher). Der vorläufige Administrator existiert dann nicht mehr.
@@ -100,7 +117,7 @@ Rust-Toolchain und PostgreSQL ≥ 14 vorausgesetzt:
 ```sh
 createdb tickly
 export DATABASE_URL=postgres://benutzer:passwort@localhost/tickly
-export PUBLIC_URL=https://zeit.example.com ADMIN_EMAIL=… ADMIN_PASSWORD=… TICKLY_SECRET=…
+export PUBLIC_URL=https://zeit.example.com TICKLY_SECRET=…
 cargo run --release -p tickly-api      # liest die Weboberfläche aus ./web (WEB_DIR)
 ```
 
@@ -110,7 +127,7 @@ cargo run --release -p tickly-api      # liest die Weboberfläche aus ./web (WEB
 |---|---|
 | Server startet nicht: „TICKLY_SECRET passt nicht zu den vorhandenen Daten“ | Es wurde ein anderes Geheimnis gesetzt als beim ersten Verschlüsseln. Das ursprüngliche wieder eintragen. |
 | „Die Daten sind mit TICKLY_SECRET verschlüsselt, aber es ist nicht gesetzt“ | `TICKLY_SECRET` fehlt in der Umgebung. |
-| „Es gibt noch keinen Benutzer“ | `ADMIN_EMAIL`, `ADMIN_PASSWORD` (und `ADMIN_NAME`) setzen. |
+| Seite zeigt „Willkommen bei Tickly“ und verlangt einen Code | Es gibt noch keinen Benutzer. Den Einrichtungscode zeigt `docker compose logs api`. |
 | Passkey-Anmeldung funktioniert nicht | `PUBLIC_URL` muss exakt die Adresse sein, unter der du den Server aufrufst (HTTPS bzw. `localhost`). |
 | Alle Besucher erscheinen mit einer internen Adresse (172.x) | Der Proxy liefert keine `CF-Connecting-IP`/`X-Forwarded-For`, oder seine Adresse ist nicht vertrauenswürdig → `TRUSTED_PROXIES` setzen. |
 | Sicherung ins Verzeichnis schlägt fehl | Rechte: Der Container läuft als UID 65532 und muss schreiben dürfen. Die Prüfung steht unter *Administration → Sicherung*. |

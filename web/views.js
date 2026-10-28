@@ -237,6 +237,20 @@ function vLogin() {
     ${S.demoHint ? `<p class="xs muted" style="text-align:center">Demo-Zugang vorausgefüllt (Administrator). Normaler Benutzer: lena.hoffmann@example.de · gleiches Passwort.</p>` : ''}
   </div></div></div>`;
 }
+function vSetup() {
+  return `<div class="auth">${authArt()}<div class="auth-form"><div class="auth-box">
+    <div><h1>Willkommen bei Tickly</h1><p class="muted" style="margin-top:4px">Lege jetzt das Konto des ersten Administrators an.</p></div>
+    <label class="f">Einrichtungscode<input type="text" id="su-code" autocomplete="off" spellcheck="false" placeholder="aus dem Server-Protokoll" class="mono">
+      <span class="hint">Der Code steht im Protokoll des Servers: <span class="mono">docker compose logs api</span> (Zeile „Einrichtungscode“). Er schützt davor, dass ein Fremder die Einrichtung zuerst abschließt.</span></label>
+    <label class="f">Vollständiger Name<input type="text" id="su-name" placeholder="Max Mustermann" autocomplete="name"></label>
+    <label class="f">E-Mail<input type="email" id="su-mail" placeholder="max@firma.de" autocomplete="username"></label>
+    <label class="f">Passwort<input type="password" id="rg-pw" autocomplete="new-password" placeholder="Mindestens ${S.reg.minPw} Zeichen"></label>
+    <div class="pwrules" id="pw-rules">${pwRulesHtml('')}</div>
+    <label class="f">Passwort wiederholen<input type="password" id="su-pw2" autocomplete="new-password"></label>
+    <div class="callout info">${ic('info')}<span>Lange Passwörter sind besser. Ein Passwortmanager erzeugt und speichert sie für dich. Danach kannst du in den Einstellungen einen Passkey oder TOTP einrichten.</span></div>
+    <button class="btn primary lg block" data-a="setupSave">Administrator anlegen</button>
+  </div></div></div>`;
+}
 function vRegister() {
   const back = `<a href="#/login" class="sm" style="color:var(--brand);font-weight:600">${ic('chevL', 14)} Zurück zur Anmeldung</a>`;
   let body;
@@ -293,7 +307,8 @@ function vDashboard() {
   }
   const hist = balanceSeries().filter((_, i, a) => i >= a.length - 90);
   const wb = hist.map(p => ({ v: p.bal, t: sdur(p.bal), s: `Überstundenkonto · ${dLong(p.date)}` }));
-  const xt = [0, 30, 60, hist.length - 1].map(i => ({ i, l: dShort(hist[i].date) }));
+  // Beschriftungen nur an vorhandenen Punkten (neue Konten haben weniger als 90 Tage Verlauf)
+  const xt = [...new Set([0, 30, 60, hist.length - 1].filter(i => i >= 0 && i < hist.length))].map(i => ({ i, l: dShort(hist[i].date) }));
   const app = appUsage(TODAY, TODAY), up = nextHolidays(3);
   const vac = S.absences.filter(a => a.from > TODAY).sort((a, b) => a.from.localeCompare(b.from));
   return `<div class="g-hero">
@@ -728,7 +743,7 @@ const STAT = { active: ['Aktiv', 'good'], pending: ['Wartet auf Freigabe', 'warn
 const TODAYL = { tracking: ['Tracking läuft', 'run'], locked: ['Gesperrt', 'lock'], paused: ['Pausiert', 'lock'], asking: ['Rückfrage offen', 'lock'], vacation: ['Urlaub', ''], none: ['–', ''] };
 const fmtSize = b => b < 1048576 ? Math.max(1, Math.round(b / 1024)) + ' KB' : (b / 1048576).toFixed(1).replace('.', ',') + ' MB';
 const fmtStamp = iso => { const d = new Date(iso); return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
-const KIND_LABEL = { edit: 'Zeiten bearbeitet', login: 'Anmeldung', totp: 'Zweiter Faktor', passkey: 'Passkey', register: 'Registrierung', device_pair: 'Gerät', block: 'IP-Sperre', unblock: 'Entsperrt', admin: 'Verwaltung', backup: 'Sicherung', restore: 'Wiederherstellung' };
+const KIND_LABEL = { edit: 'Zeiten bearbeitet', login: 'Anmeldung', totp: 'Zweiter Faktor', passkey: 'Passkey', register: 'Registrierung', setup: 'Einrichtung', device_pair: 'Gerät', block: 'IP-Sperre', unblock: 'Entsperrt', admin: 'Verwaltung', backup: 'Sicherung', restore: 'Wiederherstellung' };
 const shortUa = ua => { if (!ua) return '–'; const b = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : /tickly-companion/.test(ua) ? 'Companion' : ua.slice(0, 18); const o = /Windows/.test(ua) ? 'Windows' : /Mac OS/.test(ua) ? 'macOS' : /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iOS' : /Linux/.test(ua) ? 'Linux' : ''; return o ? `${b} · ${o}` : b; };
 const place = (ip, cc) => `<span class="mono sm">${esc(ip || '–')}</span>${cc ? ` <span title="${esc(countryName(cc))}">${flag(cc)} <span class="muted xs">${esc(cc)}</span></span>` : ''}`;
 function vMail() {

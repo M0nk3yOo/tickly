@@ -27,7 +27,7 @@ impl ClientIp {
 }
 
 /// Fehlversuche dieser Arten zählen für die automatische Sperre.
-const FAIL_KINDS: [&str; 4] = ["login", "totp", "passkey", "device_pair"];
+const FAIL_KINDS: [&str; 5] = ["login", "totp", "passkey", "device_pair", "setup"];
 
 /* ---------- Client-IP ---------- */
 fn in_cidr(ip: IpAddr, net: IpAddr, bits: u8) -> bool {

@@ -112,6 +112,8 @@ pub struct App {
     pub mfa_tickets: Mutex<HashMap<String, (String, Instant, u8)>>,
     /// Falsche Codes je Benutzer (Beginn des Fensters, Anzahl)
     pub mfa_fails: Mutex<HashMap<String, (Instant, u32)>>,
+    /// Einmaliger Code für die Ersteinrichtung im Browser; nur gesetzt, solange es noch keinen Benutzer gibt.
+    pub setup_code: Mutex<Option<String>>,
 }
 
 impl App {
@@ -121,7 +123,7 @@ impl App {
             .rp_name("Tickly")
             .build()
             .expect("WebAuthn konnte nicht gebaut werden");
-        App { cfg, pool, webauthn, reg_states: Default::default(), auth_states: Default::default(), pair_fails: Mutex::new((Instant::now(), 0)), mfa_tickets: Default::default(), mfa_fails: Default::default() }
+        App { cfg, pool, webauthn, reg_states: Default::default(), auth_states: Default::default(), pair_fails: Mutex::new((Instant::now(), 0)), mfa_tickets: Default::default(), mfa_fails: Default::default(), setup_code: Default::default() }
     }
 
     /// „Jetzt“ als (Datum, Minuten seit Mitternacht). Im Demo-Modus gilt das feste Datum und die Uhrzeit des Clients.

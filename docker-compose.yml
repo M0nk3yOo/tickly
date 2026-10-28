@@ -32,9 +32,6 @@ services:
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
       WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID:-}
       TICKLY_TZ: ${TICKLY_TZ:-Europe/Berlin}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
-      ADMIN_NAME: ${ADMIN_NAME:-Administrator}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       TICKLY_DEMO: ${TICKLY_DEMO:-0}
       DEMO_PASSWORD: ${DEMO_PASSWORD:-}
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}

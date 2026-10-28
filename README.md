@@ -60,8 +60,9 @@ Die Demo hat ein festes Datum, einen Zeitraffer und erzeugte Beispieldaten (Admi
 **Betrieb mit Docker** (API + PostgreSQL, öffentlich per Cloudflare-Tunnel möglich):
 
 ```sh
-cp .env.example .env          # PUBLIC_URL, DB_PASSWORD, ADMIN_EMAIL, ADMIN_PASSWORD, TICKLY_SECRET … ausfüllen
+cp .env.example .env          # PUBLIC_URL, DB_PASSWORD, TICKLY_SECRET ausfüllen (Befehle zum Erzeugen stehen in der Datei)
 docker compose up -d --build  # lokal auf http://localhost:3000
+docker compose logs api       # zeigt den Einrichtungscode; dann http://localhost:3000 öffnen und den Administrator anlegen
 docker compose --profile tunnel up -d --build   # zusätzlich Cloudflare-Tunnel
 ```
 

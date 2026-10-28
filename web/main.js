@@ -2,7 +2,7 @@
 /* Tickly – Web-Oberfläche · Router, Rendering, Events (alle Daten kommen von der Rust-API) */
 
 const $ = s => document.querySelector(s);
-const ROUTES = ['login', 'register', 'forgot', 'reset', 'verify', 'dashboard', 'day', 'stats', 'absences', 'companion', 'settings', 'admin'];
+const ROUTES = ['setup', 'login', 'register', 'forgot', 'reset', 'verify', 'dashboard', 'day', 'stats', 'absences', 'companion', 'settings', 'admin'];
 const VIEWS = { dashboard: vDashboard, day: vDay, stats: vStats, absences: vAbsences, companion: vCompanion, settings: vSettings, admin: vAdmin };
 const DEMO_PW = 'demo-passwort';
 
@@ -12,7 +12,7 @@ function setPath(p, v) { const a = p.split('.'), l = a.pop(); a.reduce((o, k) =>
 function render() {
   const y = window.scrollY; LINES = [];
   hideTip();
-  $('#root').innerHTML = S.mfaGate ? vMfaGate() : S.route === 'forgot' ? vForgot() : S.route === 'reset' ? vReset() : S.route === 'verify' ? vVerify() : S.route === 'login' ? vLogin() : S.route === 'register' ? vRegister() : S.ready ? shell((VIEWS[S.route] || vDashboard)()) : '';
+  $('#root').innerHTML = S.mfaGate ? vMfaGate() : S.route === 'forgot' ? vForgot() : S.route === 'reset' ? vReset() : S.route === 'verify' ? vVerify() : S.route === 'setup' ? vSetup() : S.route === 'login' ? vLogin() : S.route === 'register' ? vRegister() : S.ready ? shell((VIEWS[S.route] || vDashboard)()) : '';
   renderModalOnly();
   $('#demo').innerHTML = S.loggedIn && S.ready && S.demo ? demoPanel() : '';
   window.scrollTo(0, y);
@@ -35,7 +35,10 @@ async function route() {
   if (!ROUTES.includes(r)) r = 'dashboard';
   if (S.loggedIn && !S.ready) { try { await reload(); } catch (e) { S.loggedIn = false; } }
   const open = ['register', 'forgot', 'reset', 'verify'];
-  if (!S.loggedIn && !open.includes(r)) r = 'login';
+  // Noch kein Benutzer: nur die Ersteinrichtung ist erreichbar
+  if (S.setup && !S.loggedIn) r = 'setup';
+  else if (r === 'setup') r = S.loggedIn ? 'dashboard' : 'login';
+  else if (!S.loggedIn && !open.includes(r)) r = 'login';
   else if (S.loggedIn && (r === 'login' || r === 'forgot' || r === 'reset')) r = 'dashboard';
   // Link aus der Bestätigungsmail: Adresse bestätigen (einmalig) und – bei aktivem Konto – gleich anmelden
   if (r === 'verify' && !S.loggedIn) {
@@ -230,6 +233,17 @@ const H = {
     try { await api('PUT', '/admin/smtp', body); if (quiet !== true) toast('Einstellungen gespeichert'); } finally { S.smtp = await api('GET', '/admin/smtp'); render(); }
   },
   async smtpTest() { const to = $('#sm-to').value.trim(); S.smtpTest = await api('POST', '/admin/smtp/test', { to: to || null }); render(); },
+  async setupSave() {
+    const code = $('#su-code').value.trim(), name = $('#su-name').value.trim(), mail = $('#su-mail').value.trim(), pw = $('#rg-pw').value;
+    if (!code) return toast('Bitte den Einrichtungscode eingeben', true);
+    if (!name) return toast('Bitte Namen eingeben', true);
+    if (!/^\S+@\S+\.\S+$/.test(mail)) return toast('Bitte gültige E-Mail eingeben', true);
+    const miss = pwChecks(pw).filter(c => !c[1]).map(c => c[0]);
+    if (miss.length) return toast('Dem Passwort fehlt: ' + miss.join(', '), true);
+    if (pw !== $('#su-pw2').value) return toast('Die Passwörter stimmen nicht überein', true);
+    await api('POST', '/setup', { code, name, email: mail, password: pw });
+    S.setup = false; history.replaceState(null, '', '#/dashboard'); await enter();
+  },
   async register() {
     const name = $('#rg-name').value.trim(), mail = $('#rg-mail').value.trim(), pw = $('#rg-pw').value;
     if (!name) return toast('Bitte Namen eingeben', true);
@@ -502,7 +516,7 @@ setInterval(async () => {
   try {
     const cfg = await api('GET', '/config');
     TODAY = cfg.today; TRACK_START = cfg.trackStart; S.dayDate = TODAY; S.statRef = TODAY; S.calMonth = TODAY.slice(0, 7);
-    S.demoHint = cfg.demoHint; S.demo = !!cfg.demo; if (!S.demo) S.now = cfg.now;
+    S.demoHint = cfg.demoHint; S.setup = !!cfg.setup; S.demo = !!cfg.demo; if (!S.demo) S.now = cfg.now;
     S.reg = { ...S.reg, open: cfg.registrationOpen, approval: cfg.approval, domains: cfg.domains, minPw: cfg.minPw, passkeyPrompt: cfg.passkeyPrompt };
     // Entwickler-Abkürzung: ?autologin=andre@example.de meldet mit dem Demo-Passwort an
     if (q.get('autologin') && cfg.demo) await api('POST', '/auth/login', { email: q.get('autologin'), password: DEMO_PW });

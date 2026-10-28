@@ -98,6 +98,18 @@ impl Client {
         let app = Arc::new(App::new(config(url, demo), pool));
         Client { router: api::router(app.clone()), cookie: None, app, headers: vec![], peer: None }
     }
+    /// Frische Installation ohne Benutzer und ohne Administrator in der Konfiguration (Ersteinrichtung im Browser).
+    async fn first_run() -> Client {
+        let name = fresh_db(false).await;
+        let url = url_for(&name);
+        let pool = db::connect(&url).await.unwrap();
+        sqlx::query("DELETE FROM users").execute(&pool).await.unwrap();
+        let mut cfg = config(url, false);
+        cfg.admin = None;
+        let app = Arc::new(App::new(cfg, pool));
+        db::seed_if_empty(&app).await.map_err(|e| e.1).unwrap();
+        Client { router: api::router(app.clone()), cookie: None, app, headers: vec![], peer: None }
+    }
     /// Mit Verschlüsselungsgeheimnis und/oder Sicherungsverzeichnis.
     async fn custom(secret: Option<&str>, dir: Option<std::path::PathBuf>) -> Client {
         let name = fresh_db(true).await;
@@ -1579,4 +1591,37 @@ async fn forgotten_passwords_are_reset_by_one_time_link_and_changed_when_logged_
     // Ohne SMTP gibt es keine Mails, die Antwort verrät das nur über das Feld „mail“
     assert_eq!(smtp_settings(&mut admin, port, false).await, StatusCode::OK);
     assert_eq!(anon.post("/api/auth/forgot", json!({"email": "lena.hoffmann@example.de"})).await.1["mail"], false);
+}
+
+#[tokio::test]
+async fn first_run_setup_in_browser() {
+    let mut c = Client::first_run().await;
+    let code = c.app.setup_code.lock().unwrap().clone().expect("Einrichtungscode wird erzeugt");
+    assert_eq!(c.get("/api/config").await.1["setup"], true);
+    // Bis zur Einrichtung ist die Registrierung zu, sonst gäbe es nie einen Administrator
+    let (st, _) = c.post("/api/auth/register", json!({"name": "Vorwitzig", "email": "v@example.de", "password": "Sehr-Langes-Passwort-42"})).await;
+    assert_eq!(st, StatusCode::FORBIDDEN);
+    // Falscher Code, schwaches Passwort
+    let good = json!({"code": code, "name": "Chefin", "email": "chefin@example.de", "password": "Sehr-Langes-Passwort-42"});
+    let mut wrong = good.clone(); wrong["code"] = json!("falsch");
+    assert_eq!(c.post("/api/setup", wrong).await.0, StatusCode::FORBIDDEN);
+    let mut weak = good.clone(); weak["password"] = json!("kurz");
+    assert_eq!(c.post("/api/setup", weak).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(c.get("/api/config").await.1["setup"], true);
+    // Eine leere Installation wird nicht gesichert
+    let noon = chrono::Utc::now().date_naive().and_hms_opt(12, 0, 0).unwrap().and_utc();
+    assert!(tickly_api::backup::run_due(&c.app, noon).await.is_none());
+    // Richtig: Administrator ist angelegt und angemeldet
+    let (st, _) = c.post("/api/setup", good.clone()).await;
+    assert_eq!(st, StatusCode::OK);
+    let ses = c.get("/api/session").await.1;
+    assert_eq!(ses["loggedIn"], true);
+    assert_eq!(ses["me"]["role"], "admin");
+    assert_eq!(c.get("/api/config").await.1["setup"], false);
+    assert!(c.app.setup_code.lock().unwrap().is_none());
+    // Nur einmal möglich
+    assert_eq!(c.fresh().post("/api/setup", good).await.0, StatusCode::CONFLICT);
+    assert_eq!(c.fresh().login("chefin@example.de", "Sehr-Langes-Passwort-42").await, StatusCode::OK);
+    // Jetzt wird gesichert
+    assert!(tickly_api::backup::run_due(&c.app, noon).await.is_some());
 }
