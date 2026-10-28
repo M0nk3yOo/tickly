@@ -2,6 +2,8 @@
 
 ## 0.9.4
 
+**macOS:** Die Companion-App wird nur noch für Apple Silicon (arm64) gebaut, Intel-Macs werden nicht mehr unterstützt (letzte Version dafür: 0.9.3). Die Datei heißt jetzt `…_aarch64.dmg`.
+
 Aktualisierung von 0.9.3: Die Datenbank wird beim Start automatisch erweitert. Konten, bei denen der Überstunden-Stand zu Beginn 0 ist, werden nach der Anmeldung einmal danach gefragt (mit „Keine Überstunden“ bestätigt man 0).
 
 - **Beenden zeigt Minus:** Das Fenster „Tracking beenden“ zeigt zusätzlich den Saldo des Tages (Netto − Soll) und das Überstundenkonto vorher und nachher. Endet der Tag mit Minus, weist ein Hinweis darauf hin, dass es dem Überstundenkonto abgezogen wird.

@@ -8,7 +8,7 @@
 # Optionen: --skip-tests  --no-windows  --no-docker  --no-push-image (Image nur bauen, nicht nach ghcr.io schieben)
 #           --reuse (schon gebaute Installer in release/<Version>/ weiterverwenden, z. B. nach einem Trockenlauf)
 #
-# Voraussetzungen (siehe docs/ENTWICKLUNG.md): Rust + Ziele aarch64/x86_64-apple-darwin und x86_64-pc-windows-msvc,
+# Voraussetzungen (siehe docs/ENTWICKLUNG.md): Rust + Ziele aarch64-apple-darwin und x86_64-pc-windows-msvc (nur Apple Silicon, keine Intel-Macs),
 # Node, cargo-xwin, llvm und nsis (Homebrew), Docker mit buildx (z. B. Colima), gh (angemeldet), lokales PostgreSQL für die Tests.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -44,7 +44,7 @@ v() { grep -m1 -E "$2" "$1" | sed -E 's/.*"?([0-9]+\.[0-9]+\.[0-9]+)"?.*/\1/'; }
 grep -q "^## $VERSION\$" CHANGELOG.md || die "CHANGELOG.md hat keinen Abschnitt „## $VERSION“"
 command -v npm >/dev/null || die "npm fehlt"
 INSTALLED_TARGETS="$(rustup target list --installed)"
-for t in aarch64-apple-darwin x86_64-apple-darwin $([ "$WIN" = 1 ] && echo x86_64-pc-windows-msvc); do
+for t in aarch64-apple-darwin $([ "$WIN" = 1 ] && echo x86_64-pc-windows-msvc); do
   echo "$INSTALLED_TARGETS" | grep -qx "$t" || die "Rust-Ziel $t fehlt (rustup target add $t)"
 done
 if [ "$WIN" = 1 ]; then for t in cargo-xwin makensis clang-cl; do command -v "$t" >/dev/null || die "$t fehlt (brew install llvm nsis; cargo install --locked cargo-xwin)"; done; fi
@@ -71,13 +71,13 @@ fi
 [ "$REUSE" = 1 ] || rm -rf "$OUT"
 mkdir -p "$OUT"
 
-if [ "$REUSE" = 1 ] && [ -f "$OUT/Tickly.Companion_${VERSION}_universal.dmg" ]; then
+if [ "$REUSE" = 1 ] && [ -f "$OUT/Tickly.Companion_${VERSION}_aarch64.dmg" ]; then
   step "Companion für macOS: vorhandene Datei wird weiterverwendet"
 else
-  step "Companion für macOS (universal) bauen"
-  ( cd apps/companion && npm ci --silent && env -u APPLE_CERTIFICATE -u APPLE_SIGNING_IDENTITY -u APPLE_ID -u APPLE_PASSWORD -u APPLE_TEAM_ID npx tauri build --target universal-apple-darwin )
-  DMG="$(ls apps/companion/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*_"$VERSION"_universal.dmg)"
-  cp "$DMG" "$OUT/Tickly.Companion_${VERSION}_universal.dmg"
+  step "Companion für macOS (Apple Silicon) bauen"
+  ( cd apps/companion && npm ci --silent && env -u APPLE_CERTIFICATE -u APPLE_SIGNING_IDENTITY -u APPLE_ID -u APPLE_PASSWORD -u APPLE_TEAM_ID npx tauri build --target aarch64-apple-darwin )
+  DMG="$(ls apps/companion/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*_"$VERSION"_aarch64.dmg)"
+  cp "$DMG" "$OUT/Tickly.Companion_${VERSION}_aarch64.dmg"
 fi
 
 if [ "$WIN" = 1 ] && [ "$REUSE" = 1 ] && [ -f "$OUT/Tickly.Companion_${VERSION}_x64-setup.exe" ]; then

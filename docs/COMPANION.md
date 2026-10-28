@@ -11,7 +11,7 @@ Die Installer stehen bei den **Release-Dateien** des Projekts (GitHub → *Relea
 | System | Datei |
 |---|---|
 | Windows | `Tickly.Companion_<Version>_x64-setup.exe` (bis 0.9.3 zusätzlich als `.msi`) |
-| macOS | `Tickly.Companion_<Version>_universal.dmg` (Apple Silicon und Intel) |
+| macOS | `Tickly.Companion_<Version>_aarch64.dmg` (Apple Silicon; Intel-Macs werden ab 0.9.4 nicht mehr unterstützt, die letzte Version für sie ist 0.9.3) |
 
 **Hinweis zu unsignierten Installern:** Die Installer sind nicht signiert. Prüfe vorher die Prüfsumme (`SHA256SUMS` aus dem Release: `shasum -a 256 <Datei>` auf dem Mac, `certutil -hashfile <Datei> SHA256` unter Windows).
 

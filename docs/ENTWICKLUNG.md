@@ -56,14 +56,14 @@ Version steht an vier Stellen und muss gemeinsam erhöht werden: `Cargo.toml` (`
 ```sh
 brew install llvm nsis docker docker-buildx colima
 cargo install --locked cargo-xwin
-rustup target add aarch64-apple-darwin x86_64-apple-darwin x86_64-pc-windows-msvc
+rustup target add aarch64-apple-darwin x86_64-pc-windows-msvc
 colima start --cpu 4 --memory 8 --disk 60
 gh auth refresh -h github.com -s write:packages,read:packages     # damit das Image nach ghcr.io geschoben werden darf
 ```
 Docker braucht `"cliPluginsExtraDirs": ["/opt/homebrew/lib/docker/cli-plugins"]` in `~/.docker/config.json`, damit `docker buildx` gefunden wird.
 
 **Was lokal geht und was nicht:**
-- macOS-`.dmg` (universal) und Docker-Image (linux/amd64 und linux/arm64): ja.
+- macOS-`.dmg` (nur Apple Silicon, keine Intel-Macs) und Docker-Image (linux/amd64 und linux/arm64): ja.
 - Windows: nur der **NSIS-Installer (`…-setup.exe`)** per Cross-Build mit `cargo-xwin`. Das `.msi` braucht WiX und gibt es nur unter Windows.
 - Der GitHub-Workflow **Release** (`.github/workflows/release.yml`) startet nur noch von Hand und ist die Reserve, falls du ein `.msi` brauchst oder ohne eigenen Rechner bauen willst.
 
