@@ -2,6 +2,7 @@
 
 ## Anmelden und Konto
 
+- **Überstunden-Stand zu Beginn:** Nach der ersten Anmeldung fragt Tickly einmal nach deinem Stand (Guthaben positiv, Minusstunden negativ; hast du keine, wähle „Keine Überstunden“ = 0). Das legst du **einmalig** selbst fest, danach kann es nur noch ein Administrator ändern. Bis dahin erinnert ein Hinweis auf der Übersicht, und unter *Einstellungen → Profil* kannst du es nachholen.
 - **Registrieren** (wenn der Administrator es erlaubt): Name, E-Mail, Passwort – und dein **Überstunden-Stand zu Beginn**: *Neu beginnen* (0 Stunden) oder ein **Übertrag** (z. B. `12,5` Guthaben oder `−3` Minusstunden). Danach nur noch durch einen Administrator änderbar. Je nach Einstellung musst du deine **E-Mail-Adresse bestätigen** (Link in der Mail) und auf die **Freigabe** warten.
 - **Anmelden** mit Passkey (Fingerabdruck, Gesicht, PIN, Sicherheitsschlüssel) oder Passwort. Mit eingerichteter Authenticator-App folgt nach dem Passwort ein Code.
 - **Passwort vergessen?** Es gibt zwei Wege:

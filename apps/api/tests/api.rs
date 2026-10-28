@@ -59,6 +59,7 @@ async fn fresh_db(demo: bool) -> String {
         include_str!("../migrations/0005_mfa_policy.sql").hash(&mut h);
         include_str!("../migrations/0009_security_questions.sql").hash(&mut h);
         include_str!("../migrations/0010_track_alerts.sql").hash(&mut h);
+        include_str!("../migrations/0011_start_balance.sql").hash(&mut h);
         include_str!("../migrations/0006_sessions_info.sql").hash(&mut h);
         include_str!("../migrations/0007_backup_kinds.sql").hash(&mut h);
         include_str!("../src/db.rs").hash(&mut h);
@@ -1642,7 +1643,7 @@ async fn first_run_setup_in_browser() {
 async fn register_user(admin: &mut Client, email: &str, pw: &str) -> String {
     assert_eq!(admin.put("/api/admin/registration", json!({"open": true, "approval": false, "domains": "", "weekly": 40, "passkeyPrompt": true, "minPw": 14})).await.0, StatusCode::OK);
     let mut anon = admin.fresh();
-    let (st, r) = anon.post("/api/auth/register", json!({"name": "Test Person", "email": email, "password": pw, "questions": qs()})).await;
+    let (st, r) = anon.post("/api/auth/register", json!({"name": "Test Person", "email": email, "password": pw, "questions": qs(), "startBal": 0})).await;
     assert_eq!(st, StatusCode::OK, "{r}");
     let snap = admin.get("/api/snapshot").await.1;
     snap["users"].as_array().unwrap().iter().find(|u| u["email"] == email).unwrap()["id"].as_str().unwrap().to_string()
@@ -1996,4 +1997,54 @@ async fn without_origin_secret_everything_works_as_before() {
     assert_eq!(c.get("/api/config").await.0, StatusCode::OK);
     c.login_andre().await;
     assert_eq!(c.get("/api/admin/security").await.1["originSecret"], false);
+}
+
+#[tokio::test]
+async fn start_balance_is_set_once_by_the_user_and_later_only_by_admins() {
+    let mut admin = Client::new().await;
+    admin.login_andre().await;
+    // Bei der Registrierung festgelegt (auch „0“): kein Nachfragen
+    let id = register_user(&mut admin, "reg@example.de", "Ein-Langes-Passwort-42").await;
+    let snap = admin.get("/api/snapshot?now=872").await.1;
+    assert_eq!(snap["users"].as_array().unwrap().iter().find(|u| u["id"] == id.as_str()).unwrap()["startBalSet"], true);
+
+    // Direkt angelegtes Konto: noch nicht festgelegt, der Benutzer trägt es einmalig ein
+    let (_, r) = admin.post("/api/admin/users", json!({"name": "Direkt", "email": "direkt@example.de", "role": "user", "week": 40, "direct": true})).await;
+    let temp = r["password"].as_str().unwrap().to_string();
+    let uid = r["id"].as_str().unwrap().to_string();
+    assert_eq!(admin.get("/api/snapshot?now=872").await.1["users"].as_array().unwrap().iter().find(|u| u["id"] == uid.as_str()).unwrap()["startBalSet"], false);
+    let mut u = admin.fresh();
+    assert_eq!(u.login("direkt@example.de", &temp).await, StatusCode::OK);
+    assert_eq!(u.post("/api/me/password/required", json!({"password": "Mein-Eigenes-Passwort-55!", "questions": qs()})).await.0, StatusCode::OK);
+    assert_eq!(u.get("/api/snapshot?now=872").await.1["startBalSet"], false);
+    // Ungültig, dann gültig (negativ = Minusstunden); danach ist es gesetzt und im Konto sichtbar
+    assert_eq!(u.post("/api/me/start-balance", json!({"hours": 5000})).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(u.post("/api/me/start-balance", json!({"hours": -3.5})).await.0, StatusCode::OK);
+    let s = u.get("/api/snapshot?now=872").await.1;
+    assert_eq!((s["startBalSet"].clone(), s["settings"]["startBal"].clone()), (json!(true), json!(-3.5)));
+    // Einmalig: ein zweiter Versuch (auch mit anderem Wert) wird abgelehnt, die Einstellungen ändern es ebenfalls nicht
+    assert_eq!(u.post("/api/me/start-balance", json!({"hours": 10})).await.0, StatusCode::CONFLICT);
+    let mut set = s["settings"].clone();
+    set["startBal"] = json!(99);
+    assert_eq!(u.put("/api/settings", set).await.0, StatusCode::OK);
+    assert_eq!(u.get("/api/snapshot?now=872").await.1["settings"]["startBal"], -3.5);
+    // Ein Administrator kann es nachträglich ändern
+    assert_eq!(admin.put(&format!("/api/admin/users/{uid}"), json!({"name": "Direkt", "email": "direkt@example.de", "role": "user", "week": 40, "startBal": 12.5})).await.0, StatusCode::OK);
+    assert_eq!(u.get("/api/snapshot?now=872").await.1["settings"]["startBal"], 12.5);
+    // Ein Admin, der nur den Namen ändert, setzt die Markierung eines anderen Kontos nicht
+    let (_, r2) = admin.post("/api/admin/users", json!({"name": "Zwei", "email": "zwei@example.de", "role": "user", "week": 40, "direct": true})).await;
+    let id2 = r2["id"].as_str().unwrap().to_string();
+    let cur = admin.get("/api/snapshot?now=872").await.1["users"].as_array().unwrap().iter().find(|u| u["id"] == id2.as_str()).unwrap()["startBal"].clone();
+    assert_eq!(admin.put(&format!("/api/admin/users/{id2}"), json!({"name": "Zwei Neu", "email": "zwei@example.de", "role": "user", "week": 40, "startBal": cur})).await.0, StatusCode::OK);
+    assert_eq!(admin.get("/api/snapshot?now=872").await.1["users"].as_array().unwrap().iter().find(|u| u["id"] == id2.as_str()).unwrap()["startBalSet"], false);
+}
+
+#[tokio::test]
+async fn first_admin_can_set_start_balance_during_setup() {
+    let mut c = Client::first_run().await;
+    let code = c.app.setup_code.lock().unwrap().clone().unwrap();
+    assert_eq!(c.post("/api/setup", json!({"code": code, "name": "Chefin", "email": "chefin@example.de", "password": "Sehr-Langes-Passwort-42", "questions": qs(), "startBal": 9999})).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(c.post("/api/setup", json!({"code": code, "name": "Chefin", "email": "chefin@example.de", "password": "Sehr-Langes-Passwort-42", "questions": qs(), "startBal": 12})).await.0, StatusCode::OK);
+    let s = c.get("/api/snapshot").await.1;
+    assert_eq!((s["startBalSet"].clone(), s["settings"]["startBal"].clone()), (json!(true), json!(12.0)));
 }

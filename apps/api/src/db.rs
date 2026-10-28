@@ -42,6 +42,8 @@ pub struct UserRow {
     pub mfa_grace_start: Option<DateTime<Utc>>,
     pub email_verified_at: Option<DateTime<Utc>>,
     pub must_change_pw: bool,
+    /// Der Überstunden-Stand zu Beginn ist festgelegt (vom Benutzer einmalig oder vom Administrator).
+    pub start_bal_set: bool,
 }
 
 #[derive(FromRow)]
@@ -399,15 +401,15 @@ pub async fn seed_if_empty(app: &App) -> Res<()> {
 }
 
 /// Legt den ersten Administrator an, aber nur, wenn es noch keinen Benutzer gibt (Rückgabe `None`, falls doch).
-pub async fn create_first_admin(app: &App, name: &str, email: &str, password: &str) -> Res<Option<String>> {
+pub async fn create_first_admin(app: &App, name: &str, email: &str, password: &str, start_bal: Option<f64>) -> Res<Option<String>> {
     let mut tx = app.pool.begin().await?;
     sqlx::query("SELECT pg_advisory_xact_lock(748201)").execute(&mut *tx).await?;
     let n: i64 = sqlx::query_scalar("SELECT count(*) FROM users").fetch_one(&mut *tx).await?;
     if n > 0 { return Ok(None) }
     let id = new_user_id();
     let today = app.local(Utc::now()).0;
-    sqlx::query("INSERT INTO users (id, name, email, role, status, password_hash, webauthn_id, settings, demo, seed, demo_base, track_start, last_seen_at) VALUES ($1,$2,$3,'admin','active',$4,$5,$6,false,'',$7,$8,now())")
-        .bind(&id).bind(name).bind(email).bind(hash_password(password)).bind(Uuid::new_v4()).bind(Json(fresh_settings(40.0))).bind(demo::DEFAULT_BASE).bind(today)
+    sqlx::query("INSERT INTO users (id, name, email, role, status, password_hash, webauthn_id, settings, demo, seed, demo_base, track_start, last_seen_at, start_bal_set) VALUES ($1,$2,$3,'admin','active',$4,$5,$6,false,'',$7,$8,now(),$9)")
+        .bind(&id).bind(name).bind(email).bind(hash_password(password)).bind(Uuid::new_v4()).bind(Json({ let mut st = fresh_settings(40.0); st.start_bal = start_bal.unwrap_or(0.0); st })).bind(demo::DEFAULT_BASE).bind(today).bind(start_bal.is_some())
         .execute(&mut *tx).await?;
     tx.commit().await?;
     *app.setup_code.lock().unwrap() = None;

@@ -180,6 +180,17 @@ function authArt() {
 /* Pflicht zu Passkey/Authenticator-App: Hinweis, Erinnerung beim Anmelden und Sperrseite nach Ablauf der Karenzzeit */
 const daysText = n => n <= 0 ? 'heute ist der letzte Tag' : `noch ${n} Tag${n === 1 ? '' : 'e'}`;
 const mfaDate = m => m && m.deadline ? dMid(fmtD(new Date(m.deadline))) : '';
+/* Überstunden-Stand zu Beginn (Registrierung, Ersteinrichtung, einmalig nach der Anmeldung). Auslesen: regStartBal() */
+function balForm() {
+  return `<div class="f"><span style="font-size:12.5px;color:var(--ink-2);font-weight:550">Überstunden zu Beginn</span>
+      <label class="chk"><input type="radio" name="rg-bal" value="fresh" checked>Keine Überstunden – mit 0 Stunden starten</label>
+      <div class="row" style="gap:8px"><label class="chk"><input type="radio" name="rg-bal" value="carry">Stand mitnehmen:</label><input type="text" id="rg-carry" inputmode="decimal" placeholder="z. B. 12,5 oder −3" style="width:150px"><span class="muted">Stunden</span></div>
+      <span class="hint">Positiv = Guthaben, negativ = Minusstunden. Das legst du einmal fest, danach kann es nur noch ein Administrator ändern.</span></div>`;
+}
+function startBalBanner() {
+  if (S.demo || S.startBalSet !== false) return '';
+  return `<div class="mfa-banner">${ic('bolt', 20)}<div class="grow"><b>Lege deinen Überstunden-Stand fest.</b> Das geht einmalig, danach kann ihn nur noch ein Administrator ändern. Hast du keine Überstunden, trage 0 ein.</div><button class="btn sm primary" data-a="startBalOpen">Jetzt festlegen</button></div>`;
+}
 /* Sicherheitsfragen: drei Fragen mit Antworten (Registrierung, Einrichtung, Einstellungen) */
 function secQForm(prefix) {
   const list = S.questionList || [], start = [0, 4, 8];
@@ -310,6 +321,7 @@ function vSetup() {
     <div class="pwrules" id="pw-rules">${pwRulesHtml('')}</div>
     <label class="f">Passwort wiederholen<input type="password" id="su-pw2" autocomplete="new-password"></label>
     ${S.reg.secQuestions ? secQForm('sq') : ''}
+    ${balForm()}
     <div class="callout info">${ic('info')}<span>Lange Passwörter sind besser. Ein Passwortmanager erzeugt und speichert sie für dich. Danach kannst du in den Einstellungen einen Passkey oder TOTP einrichten.</span></div>
     <button class="btn primary lg block" data-a="setupSave">Administrator anlegen</button>
   </div></div></div>`;
@@ -327,10 +339,7 @@ function vRegister() {
     <label class="f">Passwort<input type="password" id="rg-pw" autocomplete="new-password" placeholder="Mindestens ${S.reg.minPw} Zeichen"></label>
     <div class="pwrules" id="pw-rules">${pwRulesHtml('')}</div>
     ${S.reg.secQuestions ? secQForm('sq') : ''}
-    <div class="f"><span style="font-size:12.5px;color:var(--ink-2);font-weight:550">Überstunden zu Beginn</span>
-      <label class="chk"><input type="radio" name="rg-bal" value="fresh" checked>Neu beginnen – mit 0 Stunden starten</label>
-      <div class="row" style="gap:8px"><label class="chk"><input type="radio" name="rg-bal" value="carry">Stand mitnehmen:</label><input type="text" id="rg-carry" inputmode="decimal" placeholder="z. B. 12,5 oder −3" style="width:150px"><span class="muted">Stunden</span></div>
-      <span class="hint">Positiv = Guthaben, negativ = Minusstunden. Danach nur noch durch einen Administrator änderbar.</span></div>
+    ${balForm()}
     <label class="chk"><input type="checkbox" id="rg-agb" checked>Ich stimme den Nutzungsbedingungen und der Datenschutzerklärung zu.</label>
     ${S.reg.approval ? `<div class="callout info">${ic('info')}<span>Neue Konten werden von einem Administrator <b>freigegeben</b>, bevor du dich anmelden kannst.</span></div>` : ''}
     <button class="btn primary lg block" data-a="register">Konto erstellen</button>
@@ -802,7 +811,7 @@ function vSettings() {
       <label class="f">Sprache<select><option>Deutsch</option><option>English</option></select></label><label class="f">Zeitzone<select><option>Europe/Berlin (MEZ)</option></select></label>
       <div class="f" style="gap:6px"><span style="font-size:12.5px;color:var(--ink-2);font-weight:550">Darstellung</span><div class="seg" style="align-self:flex-start">${[['system', 'System', 'monitor'], ['light', 'Hell', 'sun'], ['dark', 'Dunkel', 'moon']].map(([v, l, i]) => `<button class="${S.themePref === v ? 'on' : ''}" data-a="themePick" data-v="${v}" style="display:inline-flex;gap:6px;align-items:center">${ic(i, 15)}${l}</button>`).join('')}</div><span class="hint">${S.themePref === 'system' ? `Folgt dem Betriebssystem (gerade ${S.theme === 'dark' ? 'dunkel' : 'hell'}).` : S.themePref === 'dark' ? 'Immer dunkel.' : 'Immer hell.'} Gilt auch für die Companion-App.</span></div>
       <div><button class="btn primary" data-a="saveMe">Speichern</button></div></div></div>
-      <div class="card"><div class="ch"><h3>Konto</h3></div><div class="kv"><span>Überstunden-Stand zu Beginn</span><b class="mono">${sgn(S.set.startBal * 60)}</b></div><p class="hint" style="margin:-4px 0 6px">Bei der Registrierung festgelegt; Änderungen nur durch einen Administrator.</p><div class="kv"><span>Mitglied seit</span><b>${dMid(TRACK_START)}</b></div><div class="kv"><span>Tracking-Start</span><b>${dMid(TRACK_START)}</b></div><div class="kv"><span>Rolle</span><b>${S.me.role === 'admin' ? 'Administrator' : 'Benutzer'}</b></div>
+      <div class="card"><div class="ch"><h3>Konto</h3></div><div class="kv"><span>Überstunden-Stand zu Beginn</span>${S.startBalSet === false ? `<button class="btn sm primary" data-a="startBalOpen">Jetzt festlegen</button>` : `<b class="mono">${sgn(S.set.startBal * 60)}</b>`}</div><p class="hint" style="margin:-4px 0 6px">${S.startBalSet === false ? 'Noch nicht festgelegt. Das geht einmalig; danach nur durch einen Administrator.' : 'Einmalig festgelegt; Änderungen nur durch einen Administrator.'}</p><div class="kv"><span>Mitglied seit</span><b>${dMid(TRACK_START)}</b></div><div class="kv"><span>Tracking-Start</span><b>${dMid(TRACK_START)}</b></div><div class="kv"><span>Rolle</span><b>${S.me.role === 'admin' ? 'Administrator' : 'Benutzer'}</b></div>
       <div class="hr" style="margin:14px 0"></div><button class="btn danger" data-a="logout">${ic('logout', 15)} Abmelden</button></div></div>`;
   }
   return `<div class="stack">${head}${body}</div>`;
@@ -994,7 +1003,7 @@ function renderModal() {
       <label class="f">Name<input type="text" value="${esc(u.name)}" data-in="modal.u.name" data-nr="1" placeholder="Vor- und Nachname"></label>
       <label class="f">E-Mail<input type="email" value="${esc(u.email)}" data-in="modal.u.email" data-nr="1" placeholder="name@firma.de"></label>
       <div class="row wrap"><label class="f grow">Rolle<select data-in="modal.u.role" data-nr="1"><option value="user" ${u.role === 'user' ? 'selected' : ''}>Benutzer</option><option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Administrator</option></select></label>
-      <label class="f grow">Wochensoll (h)<input type="number" style="width:100%;text-align:left" value="${u.week}" data-in="modal.u.week" data-type="num" data-nr="1"></label>${u.isNew ? '' : `<label class="f grow">Überstunden-Übertrag (h)<input type="number" step="0.25" style="width:100%;text-align:left" value="${u.startBal ?? 0}" data-in="modal.u.startBal" data-type="num" data-nr="1"></label>`}</div>
+      <label class="f grow">Wochensoll (h)<input type="number" style="width:100%;text-align:left" value="${u.week}" data-in="modal.u.week" data-type="num" data-nr="1"></label>${u.isNew ? '' : `<label class="f grow">Überstunden-Übertrag (h)${u.startBalSet === false ? ' · noch nicht festgelegt' : ''}<input type="number" step="0.25" style="width:100%;text-align:left" value="${u.startBal ?? 0}" data-in="modal.u.startBal" data-type="num" data-nr="1"></label>`}</div>
       ${u.isNew ? `<label class="chk"><input type="checkbox" ${u.direct ? 'checked' : ''} data-a="inviteDirect">Direkt mit Initialpasswort anlegen (statt Einladung per Link)</label>
         ${u.direct ? `<label class="f">Initialpasswort (leer lassen = zufällig erzeugen)<input type="text" value="${esc(u.pw || '')}" data-in="modal.u.pw" data-nr="1" autocomplete="off" spellcheck="false" class="mono"></label>
           <p class="hint">Der Benutzer meldet sich mit seiner E-Mail und diesem Passwort an und legt dann ein eigenes Passwort und seine Sicherheitsfragen fest. Das Konto ist sofort aktiv.</p>` : `<p class="hint">Der Benutzer erhält einen Link zur Registrierung und kann sich anschließend per Passwort oder Passkey anmelden.</p>`}` : `<div class="chips">${self ? '' : `<button class="btn sm" data-a="pwAdminOpen">${ic('key', 14)} Neues Passwort setzen</button>`}<button class="btn sm" data-a="pkReset" ${u.passkeys ? '' : 'disabled'}>${ic('fp', 14)} Passkeys zurücksetzen (${u.passkeys})</button><button class="btn sm" data-a="endAllSess" data-id="${u.id}">${ic('logout', 14)} Alle Sitzungen beenden</button><button class="btn sm" data-a="totpReset" data-id="${u.id}" ${u.totp ? '' : 'disabled'}>${ic('shield', 14)} TOTP zurücksetzen</button></div>`}
@@ -1015,6 +1024,10 @@ function renderModal() {
       <p class="sm"><a href="#" data-a="stopMode" style="color:var(--brand);font-weight:600">${custom ? 'Stattdessen jetzt beenden' : 'Anderes Ende festlegen …'}</a></p></div>
     <div class="mf"><button class="btn" data-a="modalClose">Abbrechen</button><button class="btn primary" data-a="stopDo" ${m.prev ? '' : 'disabled'}>${custom ? `Mit Ende ${hm(at)} beenden` : 'Tracking beenden'}</button></div></div></div>`;
   }
+  if (m.type === 'startbal') return `<div class="ov"><div class="modal" style="width:min(480px,100%)"><div class="mh"><h3>Überstunden zu Beginn</h3><button class="ibtn right" data-a="modalClose">${ic('x')}</button></div>
+    <div class="mb"><p>Hast du Überstunden (oder Minusstunden), die Tickly von Anfang an mitrechnen soll? Das legst du <b>einmalig</b> fest, danach kann es nur noch ein Administrator ändern. Hast du keine, wähle „Keine Überstunden“.</p>
+      ${balForm()}</div>
+    <div class="mf"><button class="btn" data-a="modalClose">Später</button><button class="btn primary" data-a="startBalSave">Festlegen</button></div></div></div>`;
   if (m.type === 'secq') return `<div class="ov"><div class="modal" style="width:min(520px,100%)"><div class="mh"><h3>Sicherheitsfragen</h3><button class="ibtn right" data-a="modalClose">${ic('x')}</button></div>
     <div class="mb">${secQForm('mq')}<label class="f">Zur Bestätigung: dein Passwort<input type="password" id="mq-cur" autocomplete="current-password"></label></div>
     <div class="mf"><button class="btn" data-a="modalClose">Abbrechen</button><button class="btn primary" data-a="secqSave">Speichern</button></div></div></div>`;
@@ -1075,7 +1088,7 @@ function shell(view) {
   <main class="main"><div class="top"><div class="grow"><h1>${h1}</h1><div class="sub">${sub}</div></div>
     <span class="clockchip">${ic('day', 15)}${DOW_S[dow(TODAY)]}, ${dMid(TODAY).slice(0, 6)} · <b class="mono" style="color:var(--ink)">${hm(S.now)}</b>${S.speed > 1 ? ` · ${S.speed}×` : ''}</span>
     <button class="ibtn bd" data-a="theme" title="Darstellung: ${{ system: 'System', light: 'Hell', dark: 'Dunkel' }[S.themePref]} (Klick wechselt)">${ic({ system: 'monitor', light: 'sun', dark: 'moon' }[S.themePref], 18)}</button></div>
-  <div class="content" id="view">${mfaBanner()}${secqBanner()}${view}</div></main></div>`;
+  <div class="content" id="view">${mfaBanner()}${startBalBanner()}${secqBanner()}${view}</div></main></div>`;
 }
 function demoPanel() {
   const acc = [['andre@example.de', 'André Becker', 'Administrator'], ['lena.hoffmann@example.de', 'Lena Hoffmann', 'Benutzer'], ['sophie.wagner@example.de', 'Sophie Wagner', 'Administratorin']];

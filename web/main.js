@@ -93,7 +93,9 @@ async function enter() {
   await reload();
   toast('Willkommen, ' + S.me.name.split(' ')[0]);
   // Erinnerung bei jeder Anmeldung, solange nichts eingerichtet ist
-  if (S.mfa && S.mfa.required && !S.mfa.compliant) { S.modal = { type: 'mfaRemind' }; window.__keepModal = true; }
+  // Überstunden-Stand noch nicht festgelegt: einmalig abfragen (hat Vorrang), sonst die Erinnerung an Passkey/Authenticator
+  if (S.startBalSet === false && !S.demo) { S.modal = { type: 'startbal' }; window.__keepModal = true; }
+  else if (S.mfa && S.mfa.required && !S.mfa.compliant) { S.modal = { type: 'mfaRemind' }; window.__keepModal = true; }
   go('dashboard');
 }
 /* Nach der Einrichtung im Sperr-Modus: Sitzung neu prüfen und in die App wechseln */
@@ -272,6 +274,11 @@ const H = {
     S.modal = { type: 'adminpwDone', u, password: r.password, pwLogin: r.pwLogin }; renderModalOnly(); try { await reload(); } catch (e) { /* egal */ }
   },
   async pwCopy() { try { await navigator.clipboard.writeText(S.modal.password); toast('Passwort kopiert'); } catch (e) { toast('Bitte das Passwort markieren und kopieren', true); } },
+  startBalOpen() { S.modal = { type: 'startbal' }; renderModalOnly(); },
+  async startBalSave() {
+    const hours = regStartBal();
+    await api('POST', '/me/start-balance', { hours }); closeModal(); toast('Überstunden-Stand festgelegt'); await sync();
+  },
   async setupSave() {
     const code = $('#su-code').value.trim(), name = $('#su-name').value.trim(), mail = $('#su-mail').value.trim(), pw = $('#rg-pw').value;
     if (!code) return toast('Bitte den Einrichtungscode eingeben', true);
@@ -282,7 +289,7 @@ const H = {
     if (pw !== $('#su-pw2').value) return toast('Die Passwörter stimmen nicht überein', true);
     const questions = S.reg.secQuestions ? readSecQ('sq') : [], qp = S.reg.secQuestions ? secQProblem(questions) : '';
     if (qp) return toast(qp, true);
-    await api('POST', '/setup', { code, name, email: mail, password: pw, questions });
+    await api('POST', '/setup', { code, name, email: mail, password: pw, questions, startBal: regStartBal() });
     S.setup = false; history.replaceState(null, '', '#/dashboard'); await enter();
   },
   async register() {

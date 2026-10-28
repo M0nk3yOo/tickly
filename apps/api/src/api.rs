@@ -45,6 +45,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/today", get(today))
         .route("/settings", put(put_settings))
         .route("/me", post(put_me))
+        .route("/me/start-balance", post(set_start_balance))
         .route("/absences", post(abs_create))
         .route("/absences/{id}", put(abs_update).delete(abs_delete))
         .route("/companion", post(companion))
@@ -230,7 +231,7 @@ async fn logout(State(app): St, h: HeaderMap) -> Res<Response> {
 }
 
 #[derive(Deserialize)]
-struct SetupReq { code: String, name: String, email: String, password: String, #[serde(default)] questions: Vec<crate::secq::Qa> }
+struct SetupReq { code: String, name: String, email: String, password: String, #[serde(default)] questions: Vec<crate::secq::Qa>, #[serde(rename = "startBal")] start_bal: Option<f64> }
 
 /// Ersteinrichtung: legt den ersten Administrator an. Erfordert den Einrichtungscode aus dem Server-Protokoll.
 async fn setup(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientIp>, Json(r): Json<SetupReq>) -> Res<Response> {
@@ -246,9 +247,10 @@ async fn setup(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientIp>,
     if name.is_empty() { return bad("Bitte Namen eingeben") }
     if !valid_email(&email) { return bad("Bitte gültige E-Mail-Adresse eingeben") }
     if let Some(m) = password_problem(&r.password, MIN_PW) { return bad(m) }
+    if r.start_bal.is_some_and(|b| !b.is_finite() || b.abs() > 2000.0) { return bad("Der Übertrag muss zwischen −2000 und +2000 Stunden liegen") }
     // Sicherheitsfragen sind in einer neuen Installation standardmäßig an
     if db::reg_policy(&app.pool).await?.sec_questions { crate::secq::validate(&r.questions).map_err(|m| ApiError(StatusCode::BAD_REQUEST, m))?; }
-    let Some(id) = db::create_first_admin(&app, &name, &email, &r.password).await? else { return conflict("Die Einrichtung ist bereits abgeschlossen. Bitte melde dich an.") };
+    let Some(id) = db::create_first_admin(&app, &name, &email, &r.password, r.start_bal).await? else { return conflict("Die Einrichtung ist bereits abgeschlossen. Bitte melde dich an.") };
     if r.questions.len() == crate::secq::SLOTS { crate::secq::store(&app.pool, &id, &r.questions).await?; }
     netsec::log(&app, "setup", true, ip, &h, Some(&id), Some(&email), "Administrator bei der Einrichtung angelegt").await;
     tracing::info!("Administrator {email} bei der Einrichtung angelegt");
@@ -287,7 +289,7 @@ async fn register(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientI
     let (id, status) = match existing {
         // Einladung annehmen: Konto wird ohne weitere Freigabe aktiv.
         Some(u) if u.status == "invited" => {
-            sqlx::query("UPDATE users SET name = $2, password_hash = $3, status = 'active', last_seen_at = now(), mfa_grace_start = now(), settings = jsonb_set(settings, '{startBal}', to_jsonb($4::float8)) WHERE id = $1").bind(&u.id).bind(&name).bind(&hash).bind(start_bal).execute(&app.pool).await?;
+            sqlx::query("UPDATE users SET name = $2, password_hash = $3, status = 'active', last_seen_at = now(), mfa_grace_start = now(), settings = jsonb_set(settings, '{startBal}', to_jsonb($4::float8)), start_bal_set = $5 WHERE id = $1").bind(&u.id).bind(&name).bind(&hash).bind(start_bal).bind(r.start_bal.is_some()).execute(&app.pool).await?;
             (u.id, "active".to_string())
         }
         Some(_) => return conflict("Diese E-Mail-Adresse ist bereits registriert"),
@@ -296,8 +298,8 @@ async fn register(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientI
             let status = if reg.approval { "pending" } else { "active" };
             let id = db::new_user_id();
             let today = app.clock(None).0;
-            sqlx::query("INSERT INTO users (id, name, email, role, status, password_hash, webauthn_id, settings, track_start) VALUES ($1,$2,$3,'user',$4,$5,$6,$7,$8)")
-                .bind(&id).bind(&name).bind(&email).bind(status).bind(&hash).bind(Uuid::new_v4()).bind(SJson({ let mut st = if app.cfg.demo { db::weekly_settings(reg.weekly) } else { db::fresh_settings(reg.weekly) }; st.start_bal = start_bal; st })).bind(today)
+            sqlx::query("INSERT INTO users (id, name, email, role, status, password_hash, webauthn_id, settings, track_start, start_bal_set) VALUES ($1,$2,$3,'user',$4,$5,$6,$7,$8,$9)")
+                .bind(&id).bind(&name).bind(&email).bind(status).bind(&hash).bind(Uuid::new_v4()).bind(SJson({ let mut st = if app.cfg.demo { db::weekly_settings(reg.weekly) } else { db::fresh_settings(reg.weekly) }; st.start_bal = start_bal; st })).bind(today).bind(r.start_bal.is_some())
                 .execute(&app.pool).await?;
             (id, status.to_string())
         }
@@ -489,6 +491,7 @@ async fn snapshot_json(app: &App, u: &UserRow, today: NaiveDate, now: f64) -> Re
     v["mfa"] = db::mfa_status(&app.pool, u, &reg).await?.json();
     v["limits"] = json!({ "editDaysBack": reg.edit_days_back, "longTrackHours": reg.long_track_hours });
     v["secQ"] = crate::secq::status(app, u).await?;
+    v["startBalSet"] = json!(u.start_bal_set);
     v["totp"] = json!({ "enabled": u.totp_enabled, "recoveryLeft": if u.totp_enabled { crate::mfa::recovery_left(app, &u.id).await? } else { 0 } });
     if u.role == "admin" {
         let labels = today_labels(app, today).await?;
@@ -500,7 +503,7 @@ async fn snapshot_json(app: &App, u: &UserRow, today: NaiveDate, now: f64) -> Re
             users.push(json!({
                 "mfa": if x.status == "active" { json!({ "required": xm.required, "compliant": xm.compliant, "deadline": xm.deadline, "expired": xm.expired }) } else { Value::Null },
                 "id": x.id, "name": x.name, "email": x.email, "role": x.role, "status": x.status, "passkeys": pk,
-                "totp": x.totp_enabled, "mustChangePw": x.must_change_pw, "startBal": x.settings.start_bal, "week": db::week_hours(&x.settings), "bal": bal, "last": db::last_label(&x, now_utc),
+                "totp": x.totp_enabled, "mustChangePw": x.must_change_pw, "startBalSet": x.start_bal_set, "startBal": x.settings.start_bal, "week": db::week_hours(&x.settings), "bal": bal, "last": db::last_label(&x, now_utc),
                 "today": labels.get(&x.id).cloned().unwrap_or_else(|| "none".into()),
             }));
         }
@@ -712,6 +715,19 @@ async fn admin_invite(State(app): St, h: HeaderMap, Extension(ip): Extension<Cli
 }
 
 #[derive(Deserialize)]
+struct StartBalReq { hours: f64 }
+
+/// Überstunden-Stand zu Beginn: einmalig durch den Benutzer, danach nur noch durch einen Administrator.
+async fn set_start_balance(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientIp>, Json(r): Json<StartBalReq>) -> Res<Json<Value>> {
+    let u = auth(&app, &h, false).await?;
+    if !r.hours.is_finite() || r.hours.abs() > 2000.0 { return bad("Der Übertrag muss zwischen −2000 und +2000 Stunden liegen") }
+    let n = sqlx::query("UPDATE users SET settings = jsonb_set(settings, '{startBal}', to_jsonb($2::float8)), start_bal_set = true WHERE id = $1 AND NOT start_bal_set").bind(&u.id).bind(r.hours).execute(&app.pool).await?.rows_affected();
+    if n == 0 { return conflict("Der Überstunden-Stand ist schon festgelegt. Änderungen nur durch einen Administrator.") }
+    netsec::log(&app, "startbal", true, ip, &h, Some(&u.id), Some(&u.email), &format!("Überstunden-Stand zu Beginn festgelegt: {} h", r.hours)).await;
+    Ok(Json(json!({ "ok": true })))
+}
+
+#[derive(Deserialize)]
 struct UpdReq { name: String, email: String, role: String, week: f64, #[serde(rename = "startBal")] start_bal: Option<f64> }
 
 async fn admin_update(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientIp>, Path(id): Path<String>, Json(r): Json<UpdReq>) -> Res<Json<Value>> {
@@ -723,9 +739,10 @@ async fn admin_update(State(app): St, h: HeaderMap, Extension(ip): Extension<Cli
     if db::user_by_email(&app.pool, &r.email).await?.is_some_and(|x| x.id != id) { return conflict("Diese E-Mail-Adresse ist bereits vergeben") }
     let Some(u) = db::user_by_id(&app.pool, &id).await? else { return not_found("Benutzer nicht gefunden") };
     let mut s = u.settings.0.clone();
+    let mut changed_bal = false;
     if (db::week_hours(&s) - r.week).abs() > 0.01 { s.hours = db::weekly_settings(r.week.clamp(1.0, 80.0)).hours; }
-    if let Some(b) = r.start_bal { if !b.is_finite() || b.abs() > 2000.0 { return bad("Der Übertrag muss zwischen −2000 und +2000 Stunden liegen") } s.start_bal = b; }
-    sqlx::query("UPDATE users SET name = $2, email = $3, role = $4, settings = $5 WHERE id = $1").bind(&id).bind(r.name.trim()).bind(r.email.trim()).bind(&r.role).bind(SJson(&s)).execute(&app.pool).await?;
+    if let Some(b) = r.start_bal { if !b.is_finite() || b.abs() > 2000.0 { return bad("Der Übertrag muss zwischen −2000 und +2000 Stunden liegen") } if (s.start_bal - b).abs() > 1e-9 { changed_bal = true; } s.start_bal = b; }
+    sqlx::query("UPDATE users SET name = $2, email = $3, role = $4, settings = $5, start_bal_set = start_bal_set OR $6 WHERE id = $1").bind(&id).bind(r.name.trim()).bind(r.email.trim()).bind(&r.role).bind(SJson(&s)).bind(changed_bal).execute(&app.pool).await?;
     netsec::admin_action(&app, &me, ip, &h, &format!("Benutzer geändert: {} (Rolle {})", r.email.trim(), r.role)).await;
     Ok(Json(json!({ "ok": true })))
 }
