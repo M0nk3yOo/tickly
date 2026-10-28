@@ -13,7 +13,8 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD in der .env setzen}
       POSTGRES_DB: tickly
     volumes:
-      - tickly-db:/var/lib/postgresql/data
+      # Datenverzeichnis der Datenbank. Eigenen Pfad per DB_PATH, z. B. ein größeres Laufwerk; ohne Angabe ein Docker-Volume
+      - ${DB_PATH:-tickly-db}:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U tickly -d tickly"]
       interval: 5s

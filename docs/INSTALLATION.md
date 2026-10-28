@@ -32,6 +32,7 @@ Wichtige Werte in `.env`:
 | `DB_PASSWORD` | Passwort der Datenbank (nur im internen Netz erreichbar). Zufällig und lang, nur Hex-Zeichen: `openssl rand -hex 32`. |
 | `TICKLY_SECRET` | Schlüssel zum **Verschlüsseln** von Sicherungen, TOTP-Geheimnissen und dem SMTP-Passwort (mind. 24 Zeichen, besser länger: `openssl rand -base64 48`). **Sicher aufbewahren, nie ändern oder verlieren** – ohne ihn sind verschlüsselte Daten nicht mehr lesbar. |
 | `CLOUDFLARE_TUNNEL_TOKEN` | Token des Tunnels (siehe unten), nur für `--profile tunnel`. |
+| `DB_PATH` | Wo die Datenbank ihre Dateien ablegt, Standard: Docker-Volume. Mit einem Pfad (z. B. `/srv/tickly/db`) liegen die Daten dort, siehe [Datenbank an einen anderen Ort legen](#datenbank-an-einen-anderen-ort-legen). |
 | `BACKUP_PATH` | Pfad für Sicherungen, besser auf einem anderen Laufwerk (siehe [Sicherung](#sicherung)). |
 | `TICKLY_TZ` | Zeitzone für Arbeitstage, Standard `Europe/Berlin`. |
 | `TRUSTED_PROXIES` | Zusätzliche Proxy-Adressen, deren Weiterleitungs-Header gelten (Komma getrennt, auch CIDR). Lokale/private Adressen (Docker-Netz) gelten automatisch. |
@@ -75,6 +76,19 @@ Cloudflare beendet TLS. Der Server erkennt über `CF-Connecting-IP` die **echte 
 ## 4. Companion-Apps koppeln
 
 In der Weboberfläche unter **Companion-App → Kopplungscode erzeugen** und den Code in der Companion-App eingeben. Siehe [Companion-App](COMPANION.md).
+
+## Datenbank an einen anderen Ort legen
+
+Standardmäßig liegt die Datenbank in einem Docker-Volume (`tickly-db`). Willst du sie auf ein bestimmtes Laufwerk legen, setze in der `.env` einen Pfad:
+
+```sh
+DB_PATH=/srv/tickly/db      # absolut, oder relativ zur docker-compose.yml, z. B. ./db
+```
+
+- Das Verzeichnis darf leer sein oder fehlen; Docker legt es an, die Datenbank richtet die Rechte selbst ein. Nimm ein **eigenes Unterverzeichnis**, nicht die Wurzel eines Laufwerks (dort liegt oft ein `lost+found`, mit dem die Datenbank nicht startet).
+- Nimm eine **lokale Festplatte oder SSD**. Eine Datenbank auf einem Netzlaufwerk (NFS/SMB) ist langsam und riskant.
+- Das gilt für den **ersten Start**. Eine schon laufende Installation ziehst du so um: Sicherung anlegen (siehe unten), `docker compose down`, den neuen Pfad in die `.env`, `docker compose up -d` und die Sicherung unter *Administration → Sicherung* einspielen. Das ist derselbe Weg wie beim [Neuaufbau](#neuaufbau-nach-einem-totalausfall).
+- Sichere dieses Verzeichnis nicht durch Kopieren im laufenden Betrieb, sondern über die Sicherungen von Tickly oder `pg_dump`.
 
 ## Sicherung
 
