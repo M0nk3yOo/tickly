@@ -1,6 +1,8 @@
 # Änderungen
 
-## Unveröffentlicht
+## 0.9.2
+
+Aktualisierung von 0.9.1: Die Datenbank wird beim Start automatisch erweitert (neue Tabellen für Sicherheitsfragen und Hinweise). `ADMIN_EMAIL`/`ADMIN_PASSWORD` stehen nicht mehr in der Compose-Datei; neue Installationen legen den Administrator im Browser an, bestehende bleiben unverändert. Bestehende Konten ohne Sicherheitsfragen sehen einen Hinweis zum Festlegen.
 
 - **Benutzer direkt anlegen:** Administratoren können ein Konto sofort mit Initialpasswort anlegen (statt per Einladungslink). Beim ersten Anmelden legt der Benutzer ein eigenes Passwort fest und trägt fehlende Sicherheitsfragen nach (auch bei jedem anderen Initialpasswort für ein Konto ohne Fragen).
 - **Zeiterfassung rein im Web:** Das Tracking lässt sich ohne Companion starten („Im Web starten“) und beenden. „Tracking beenden“ zeigt vorher den Zeitpunkt samt Brutto, Pause und Netto; „Ende festlegen …“ beendet mit eigener Uhrzeit (alles danach entfällt, Vorschau für Brutto/Netto). Der bisherige Knopf „Stoppen“ heißt jetzt „Pause“. Der Hinweis „Companion nicht aktiv“ bleibt. Ohne Companion läuft das Tracking über Mitternacht weiter.

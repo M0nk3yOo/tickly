@@ -47,7 +47,7 @@ Siehe Kopf von `scripts/screenshots.mjs` (Demo-Server und Vite-Server laufen las
 Version steht an vier Stellen und muss gemeinsam erhöht werden: `Cargo.toml` (`[workspace.package]`), `apps/companion/package.json`, `apps/companion/src-tauri/tauri.conf.json`, `apps/companion/src-tauri/Cargo.toml` (und `apps/companion/src/api.ts` für die Vorschau).
 
 1. `CHANGELOG.md` ergänzen, Versionen erhöhen, `cargo test --workspace` laufen lassen, committen.
-2. Tag setzen und pushen: `git tag v0.9.1 && git push --tags`.
+2. Tag setzen und pushen: `git tag v0.9.2 && git push --tags`.
 3. Die GitHub-Action **Release** (`.github/workflows/release.yml`) baut die **Companion-Installer** (Windows `.msi`/`.exe`, macOS `.dmg` universal), das **Docker-Image** (`ghcr.io/<Besitzer>/tickly`) und legt eine **GitHub-Release** mit den Dateien und `SHA256SUMS` an.
 4. Release-Text prüfen und veröffentlichen.
 
