@@ -36,7 +36,7 @@ Mit **`TICKLY_SECRET`** (mind. 24 Zeichen; oder `TICKLY_SECRET_FILE`) werden ver
 
 - TLS endet am Cloudflare-Rand; die Verbindung Tunnel → Server bleibt im Docker-Netz. Den Port nie direkt freigeben.
 - Die **echte Client-IP** gilt nur, wenn die Verbindung von einem vertrauenswürdigen Proxy kommt (lokal, private Netze, `TRUSTED_PROXIES`). Wer den Server direkt erreicht, kann seine Adresse nicht fälschen.
-- Der Container läuft als unprivilegierter Benutzer (UID 65532) auf einem Image ohne Shell.
+- Der Container läuft als unprivilegierter Benutzer (Standard UID 65532, per `RUN_AS` änderbar) auf einem Image ohne Shell.
 
 ## Datenschutz (DSGVO)
 
