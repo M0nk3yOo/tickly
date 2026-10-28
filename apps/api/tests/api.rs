@@ -41,6 +41,7 @@ fn config(database_url: String, demo: bool) -> Config {
         companion_latest: None,
         backup_dir: None,
         secrets: tickly_api::secrets::Secrets::default(),
+        origin_secret: None,
         admin: if demo { None } else { Some(("chef@example.de".into(), "Chefin".into(), "Sehr-Langes-Passwort-42".into())) },
     }
 }
@@ -1937,4 +1938,62 @@ async fn admin_created_user_sets_password_and_security_questions_at_first_login(
     assert_eq!(w.login("ohne@example.de", r2["password"].as_str().unwrap()).await, StatusCode::OK);
     assert_eq!(w.get("/api/session").await.1["needsQuestions"], false);
     assert_eq!(w.post("/api/me/password/required", json!({"password": "Mein-Neues-Passwort-55!"})).await.0, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn origin_secret_is_required_and_violations_are_logged() {
+    const SECRET: &str = "ein-geheimer-origin-wert-mit-genug-laenge-1234";
+    let name = fresh_db(true).await;
+    let url = url_for(&name);
+    let pool = db::connect(&url).await.unwrap();
+    let mut cfg = config(url, true);
+    cfg.origin_secret = Some(SECRET.into());
+    let app = Arc::new(App::new(cfg, pool));
+    let base = Client { router: api::router(app.clone()), cookie: None, app, headers: vec![], peer: None };
+
+    // Ohne und mit falschem Header: 403, auch für die Weboberfläche; mit richtigem Header läuft alles normal
+    let mut anon = base.fresh().from_ip("203.0.113.5");
+    assert_eq!(anon.get("/api/config").await.0, StatusCode::FORBIDDEN);
+    assert_eq!(anon.get("/").await.0, StatusCode::FORBIDDEN);
+    anon.headers.push(("x-origin-secret".into(), "falsch".into()));
+    assert_eq!(anon.get("/api/config").await.0, StatusCode::FORBIDDEN);
+    let mut ok = base.fresh().from_ip("203.0.113.6");
+    ok.headers.push(("x-origin-secret".into(), SECRET.into()));
+    assert_eq!(ok.get("/api/config").await.0, StatusCode::OK);
+    ok.login_andre().await;
+
+    // Healthcheck: nur von Loopback ohne Header; von einer anderen Adresse nicht
+    assert_eq!(base.fresh().direct("127.0.0.1", &[]).get("/api/health").await.0, StatusCode::OK);
+    assert_eq!(base.fresh().direct("172.18.0.5", &[]).get("/api/health").await.0, StatusCode::FORBIDDEN);
+    assert_eq!(base.fresh().direct("127.0.0.1", &[]).get("/api/config").await.0, StatusCode::FORBIDDEN, "nur der Healthcheck ist ausgenommen");
+
+    // Protokoll: ein Eintrag je Adresse und Minute (nicht je Anfrage), ohne den Wert des Headers; später mit der Zahl der weiteren Anfragen
+    let log = ok.get("/api/admin/log?kind=origin").await.1;
+    let entries = log["entries"].as_array().unwrap();
+    let from = |ip: &str| entries.iter().filter(|e| e["ip"] == ip).collect::<Vec<_>>();
+    assert_eq!(from("203.0.113.5").len(), 1, "3 Anfragen, 1 Eintrag: {entries:?}");
+    let e = from("203.0.113.5")[0];
+    assert_eq!(e["ok"], false);
+    let d = e["detail"].as_str().unwrap();
+    assert!(d.contains("X-Origin-Secret fehlt") && d.contains("GET /api/config") && d.contains("Verbindung von"), "{d}");
+    assert!(!entries.iter().any(|e| e["detail"].as_str().unwrap().contains("falsch\"") || e["detail"].as_str().unwrap().contains(SECRET)));
+    assert!(entries.iter().any(|e| e["ip"] == "172.18.0.5"));
+    // Auch unter „Fehlversuche“ sichtbar
+    assert!(ok.get("/api/admin/log?kind=fail").await.1["entries"].as_array().unwrap().iter().any(|e| e["kind"] == "origin"));
+    // Nach Ablauf der Minute steht die Zahl der unterdrückten Anfragen im nächsten Eintrag
+    for _ in 0..4 { anon.get("/api/config").await; }
+    for v in ok.app.origin_hits.lock().unwrap().values_mut() { v.0 = Some(std::time::Instant::now() - std::time::Duration::from_secs(120)); }
+    assert_eq!(anon.get("/api/config").await.0, StatusCode::FORBIDDEN);
+    let log = ok.get("/api/admin/log?kind=origin&q=weitere").await.1;
+    assert!(log["entries"][0]["detail"].as_str().unwrap().contains("+"), "{log}");
+    // Die Administration zeigt, dass die Prüfung aktiv ist
+    assert_eq!(ok.get("/api/admin/security").await.1["originSecret"], true);
+}
+
+#[tokio::test]
+async fn without_origin_secret_everything_works_as_before() {
+    let mut c = Client::new().await;
+    assert_eq!(c.get("/api/config").await.0, StatusCode::OK);
+    c.login_andre().await;
+    assert_eq!(c.get("/api/admin/security").await.1["originSecret"], false);
 }

@@ -3,9 +3,9 @@
 ## Überblick
 
 ```
-Companion (Windows/macOS)  ──HTTPS + Bearer-Token──▶  Cloudflare ──Tunnel──▶  api (Axum) ──▶ PostgreSQL
-Browser (Weboberfläche)    ──HTTPS + Cookie────────▶                           │
-                                                                               └─ liefert auch web/ aus
+Companion (Windows/macOS)  ──HTTPS + Bearer-Token──▶  Proxy (Zoraxy/Cloudflare …) ──HTTP + X-Origin-Secret──▶  api (Axum) ──▶ PostgreSQL
+Browser (Weboberfläche)    ──HTTPS + Cookie────────▶                                                                   │
+                                                                                                                       └─ liefert auch web/ aus
 ```
 
 **Grundgedanke:** Die Rechenlogik steckt in **einer** Rust-Bibliothek (`tickly-core`) ohne Ein-/Ausgabe und ohne eigene Uhr (Zeit kommt als Parameter). Server und Companion benutzen genau dieselbe Funktion `apply_event` für den Tageszustand. Deshalb kann der Companion **offline mitrechnen** und kommt später beim Server zum gleichen Ergebnis. Der Server bleibt maßgeblich.

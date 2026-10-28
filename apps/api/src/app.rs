@@ -50,6 +50,8 @@ pub struct Config {
     /// Verzeichnis für automatische Sicherungen (getrennt von der Datenbank), z. B. ein eingebundenes Volume.
     pub backup_dir: Option<PathBuf>,
     pub secrets: crate::secrets::Secrets,
+    /// Geheimer Wert, den der vorgeschaltete Proxy im Header `X-Origin-Secret` mitschickt. Ohne ihn werden Anfragen abgelehnt.
+    pub origin_secret: Option<String>,
 }
 
 impl Config {
@@ -95,6 +97,10 @@ impl Config {
             companion_latest: opt("COMPANION_LATEST_VERSION"),
             backup_dir: opt("BACKUP_DIR").map(PathBuf::from),
             secrets: crate::secrets::Secrets::from_env(),
+            origin_secret: opt("ORIGIN_SECRET").map(|s| {
+                if s.chars().count() < 24 { panic!("ORIGIN_SECRET ist zu kurz: mindestens 24 Zeichen (z. B. `openssl rand -base64 48`)"); }
+                s
+            }),
         }
     }
 }
@@ -116,6 +122,8 @@ pub struct App {
     pub setup_code: Mutex<Option<String>>,
     /// Zufallsschlüssel für Scheinfragen bei unbekannten Konten (gilt bis zum Neustart).
     pub fake_key: [u8; 32],
+    /// Verstöße gegen die Origin-Prüfung je Adresse: (letzter Protokolleintrag, seither unterdrückte Anfragen).
+    pub origin_hits: Mutex<HashMap<String, (Option<Instant>, u32)>>,
 }
 
 impl App {
@@ -125,7 +133,7 @@ impl App {
             .rp_name("Tickly")
             .build()
             .expect("WebAuthn konnte nicht gebaut werden");
-        App { cfg, pool, webauthn, reg_states: Default::default(), auth_states: Default::default(), pair_fails: Mutex::new((Instant::now(), 0)), mfa_tickets: Default::default(), mfa_fails: Default::default(), setup_code: Default::default(), fake_key: { let mut k = [0u8; 32]; k[..16].copy_from_slice(uuid::Uuid::new_v4().as_bytes()); k[16..].copy_from_slice(uuid::Uuid::new_v4().as_bytes()); k } }
+        App { cfg, pool, webauthn, reg_states: Default::default(), auth_states: Default::default(), pair_fails: Mutex::new((Instant::now(), 0)), mfa_tickets: Default::default(), mfa_fails: Default::default(), setup_code: Default::default(), origin_hits: Default::default(), fake_key: { let mut k = [0u8; 32]; k[..16].copy_from_slice(uuid::Uuid::new_v4().as_bytes()); k[16..].copy_from_slice(uuid::Uuid::new_v4().as_bytes()); k } }
     }
 
     /// „Jetzt“ als (Datum, Minuten seit Mitternacht). Im Demo-Modus gilt das feste Datum und die Uhrzeit des Clients.

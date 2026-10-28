@@ -1,7 +1,7 @@
-# Tickly – Backend + Weboberfläche + PostgreSQL. TLS und öffentlicher Zugang laufen über Cloudflare.
+# Tickly – Backend + Weboberfläche + PostgreSQL. TLS und öffentlicher Zugang laufen über einen vorgeschalteten Proxy
+# (z. B. Zoraxy, Nginx oder Cloudflare), siehe docs/INSTALLATION.md.
 #
-#   Lokal testen:        docker compose up --build            -> http://localhost:3000
-#   Mit Cloudflare:      docker compose --profile tunnel up -d --build
+#   Starten:             docker compose up -d --build         -> http://localhost:3000
 #
 # Konfiguration über die Datei .env (Vorlage: .env.example).
 services:
@@ -39,6 +39,7 @@ services:
       TICKLY_DEMO: ${TICKLY_DEMO:-0}
       DEMO_PASSWORD: ${DEMO_PASSWORD:-}
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      ORIGIN_SECRET: ${ORIGIN_SECRET:-}
       TICKLY_SECRET: ${TICKLY_SECRET:-}
       BACKUP_DIR: /backups
       COMPANION_LATEST_VERSION: ${COMPANION_LATEST_VERSION:-}
@@ -47,22 +48,11 @@ services:
     volumes:
       # Getrenntes Sicherungsverzeichnis. Eigenen Pfad per BACKUP_PATH, z. B. ein anderes Laufwerk (Verzeichnis muss für den Benutzer aus RUN_AS beschreibbar sein)
       - ${BACKUP_PATH:-tickly-backups}:/backups
-    # Nur lokal erreichbar; öffentlich geht es ausschließlich über den Cloudflare-Tunnel.
+    # Der Port ist von außen erreichbar (Standard: alle Adressen). Stelle einen Proxy mit HTTPS davor (z. B. Zoraxy,
+    # Nginx, Cloudflare) und setze ORIGIN_SECRET, damit nur Anfragen über den Proxy angenommen werden.
+    # Nur lokal: TICKLY_BIND=127.0.0.1
     ports:
-      - "127.0.0.1:${TICKLY_PORT:-3000}:3000"
-
-  # Cloudflare Tunnel: keine offenen Ports am Server nötig.
-  # Im Cloudflare-Dashboard den "Public Hostname" auf http://api:3000 zeigen lassen.
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    profiles: ["tunnel"]
-    restart: unless-stopped
-    command: tunnel --no-autoupdate run
-    environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
-    depends_on:
-      api:
-        condition: service_healthy
+      - "${TICKLY_BIND:-0.0.0.0}:${TICKLY_PORT:-3000}:3000"
 
 volumes:
   tickly-db:

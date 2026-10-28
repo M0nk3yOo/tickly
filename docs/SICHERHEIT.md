@@ -36,7 +36,7 @@ Mit **`TICKLY_SECRET`** (mind. 24 Zeichen; oder `TICKLY_SECRET_FILE`) werden ver
 
 ## Netzwerk
 
-- TLS endet am Cloudflare-Rand; die Verbindung Tunnel → Server bleibt im Docker-Netz. Den Port nie direkt freigeben.
+- TLS endet am vorgeschalteten Proxy (Zoraxy, Nginx, Cloudflare …); die Verbindung Proxy → Tickly ist unverschlüsseltes HTTP und gehört in ein vertrauenswürdiges Netz. Der Port lauscht auf allen Adressen; **`ORIGIN_SECRET`** sorgt dafür, dass nur Anfragen mit dem passenden Header `X-Origin-Secret` angenommen werden (Vergleich in konstanter Zeit, Wert nie im Protokoll). Verstöße bekommen 403 und stehen im Protokoll, je Adresse höchstens einmal pro Minute. Das ersetzt keine Firewall.
 - Die **echte Client-IP** gilt nur, wenn die Verbindung von einem vertrauenswürdigen Proxy kommt (lokal, private Netze, `TRUSTED_PROXIES`). Wer den Server direkt erreicht, kann seine Adresse nicht fälschen.
 - Der Container läuft als unprivilegierter Benutzer (Standard UID 65532, per `RUN_AS` änderbar) auf einem Image ohne Shell.
 
@@ -47,7 +47,7 @@ Tickly erfasst personenbezogene Beschäftigtendaten (Arbeitszeiten, App-Namen, I
 - **Transparenz:** Benutzer sehen alles, was erfasst wird, in der Tagesansicht. Informiere sie vorab, was erfasst wird (und was nicht).
 - **Datensparsamkeit:** App-Erfassung lässt sich abschalten, Apps lassen sich ausschließen; Fenstertitel werden nie gelesen.
 - **Aufbewahrung:** Arbeitszeitdaten haben **keine automatische Löschfrist** (bewusste Entscheidung) – lege eine organisatorische Regel fest und lösche Konten bei Bedarf in der Benutzerverwaltung. Das Protokoll wird automatisch nach `LOG_RETENTION_DAYS` bereinigt.
-- **Auftragsverarbeitung:** Betreibst du Tickly selbst, bleibt alles bei dir. Cloudflare sieht als Proxy den Datenverkehr; schließe ggf. einen AV-Vertrag.
+- **Auftragsverarbeitung:** Betreibst du Tickly selbst, bleibt alles bei dir. Ein vorgeschalteter Dienst wie Cloudflare sieht als Proxy den Datenverkehr; schließe ggf. einen AV-Vertrag.
 - Dieses Dokument ist keine Rechtsberatung.
 
 ## Bekannte Grenzen

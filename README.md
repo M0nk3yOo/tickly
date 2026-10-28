@@ -57,13 +57,12 @@ scripts/dev.sh                # http://localhost:3000 · andre@example.de / demo
 
 Die Demo hat ein festes Datum, einen Zeitraffer und erzeugte Beispieldaten (Administrator `andre@example.de`, Benutzer `lena.hoffmann@example.de`, Passwort `demo-passwort`).
 
-**Betrieb mit Docker** (API + PostgreSQL, öffentlich per Cloudflare-Tunnel möglich):
+**Betrieb mit Docker** (API + PostgreSQL; öffentlich hinter einem Proxy deiner Wahl, z. B. Zoraxy oder Cloudflare):
 
 ```sh
 cp .env.example .env          # PUBLIC_URL, DB_PASSWORD, TICKLY_SECRET ausfüllen (Befehle zum Erzeugen stehen in der Datei)
 docker compose up -d --build  # lokal auf http://localhost:3000
 docker compose logs api       # zeigt den Einrichtungscode; dann http://localhost:3000 öffnen und den Administrator anlegen
-docker compose --profile tunnel up -d --build   # zusätzlich Cloudflare-Tunnel
 ```
 
 Ausführlich: **[Installation](docs/INSTALLATION.md)**. Die Companion-App installierst du aus den Release-Dateien: **[Companion-App](docs/COMPANION.md)**.
@@ -79,8 +78,8 @@ Ausführlich: **[Installation](docs/INSTALLATION.md)**. Die Companion-App instal
 ## Aufbau
 
 ```
-Companion (Windows/macOS) ──HTTPS──▶ Cloudflare ──Tunnel──▶ api (Axum) ──▶ PostgreSQL
-Browser                   ──HTTPS──▶                          └──▶ tickly-core (Rechenlogik)
+Companion (Windows/macOS) ──HTTPS──▶ Proxy (Zoraxy, Cloudflare …) ──▶ api (Axum) ──▶ PostgreSQL
+Browser                   ──HTTPS──▶                                  └──▶ tickly-core (Rechenlogik)
 ```
 
 | Ordner | Inhalt |
@@ -96,7 +95,7 @@ Browser                   ──HTTPS──▶                          └─�
 
 - **Windows-Companion nicht auf Windows getestet** (aktive App, Sperrerkennung, Herunterfahren). Bitte vor dem Einsatz auf einem echten Rechner prüfen und Fehler melden.
 - **Installer sind nicht signiert** – Windows (SmartScreen) und macOS (Gatekeeper) warnen beim ersten Start. Für den Einsatz im Team Zertifikat bzw. Apple-Developer-ID einrichten.
-- **Docker-Image, Compose-Datei und Cloudflare-Tunnel sind beschrieben, aber nicht in einer Docker-Umgebung gebaut/getestet** (auf dem Entwicklungsrechner war kein Docker vorhanden). Die CI baut sie beim Release.
+- **Docker-Image und Compose-Datei sind beschrieben, aber nicht in einer Docker-Umgebung gebaut/getestet** (auf dem Entwicklungsrechner war kein Docker vorhanden). Die CI baut sie beim Release.
 - Die Inaktivitätserkennung („Leerlauf“) ist als Einstellung vorhanden, wird aber noch nicht ausgewertet; Fenstertitel werden nie erfasst.
 - Die Weboberfläche ist Vanilla-JS; eine Umstellung auf React ist geplant.
 - Die Statistik rechnet bei jedem Aufruf alle Tage neu – gedacht für Teams und Abteilungen, nicht für tausende Benutzer.

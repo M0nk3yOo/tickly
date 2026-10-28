@@ -5,7 +5,7 @@ Tickly besteht aus dem **Server** (ein Container mit API und Weboberfläche, daz
 ## Voraussetzungen
 
 - Ein Rechner oder Server mit **Docker** und **Docker Compose** (empfohlen), etwa 1 GB RAM.
-- Eine **Domain mit HTTPS** für den öffentlichen Zugang. Passkeys und die Companion-Kopplung brauchen HTTPS, sobald der Server nicht nur lokal läuft. Geplant ist **Cloudflare** (Tunnel, keine offenen Ports) – ein eigener Reverse-Proxy ist nicht nötig.
+- Eine **Domain mit HTTPS** für den öffentlichen Zugang. Passkeys und die Companion-Kopplung brauchen HTTPS, sobald der Server nicht nur lokal läuft. Davor gehört ein **Reverse-Proxy mit TLS**, zum Beispiel Zoraxy, Nginx, Caddy oder Cloudflare (siehe [Öffentlich erreichbar machen](#3-öffentlich-erreichbar-machen)).
 - Optional: ein **SMTP-Server** für E-Mails (kann später in der Oberfläche eingerichtet werden).
 
 ## 1. Konfiguration
@@ -31,7 +31,8 @@ Wichtige Werte in `.env`:
 | `PUBLIC_URL` | Öffentliche Adresse, z. B. `https://zeit.example.com`. **Passkeys sind an diese Domain gebunden** – eine spätere Änderung macht sie unbrauchbar. |
 | `DB_PASSWORD` | Passwort der Datenbank (nur im internen Netz erreichbar). Zufällig und lang, nur Hex-Zeichen: `openssl rand -hex 32`. |
 | `TICKLY_SECRET` | Schlüssel zum **Verschlüsseln** von Sicherungen, TOTP-Geheimnissen und dem SMTP-Passwort (mind. 24 Zeichen, besser länger: `openssl rand -base64 48`). **Sicher aufbewahren, nie ändern oder verlieren** – ohne ihn sind verschlüsselte Daten nicht mehr lesbar. |
-| `CLOUDFLARE_TUNNEL_TOKEN` | Token des Tunnels (siehe unten), nur für `--profile tunnel`. |
+| `ORIGIN_SECRET` | Geheimer Wert für den Header `X-Origin-Secret`. Ist er gesetzt, nimmt Tickly nur Anfragen an, die ihn mitbringen (siehe [Öffentlich erreichbar machen](#3-öffentlich-erreichbar-machen)). Mind. 24 Zeichen, besser länger: `openssl rand -base64 48`. |
+| `TICKLY_PORT`, `TICKLY_BIND` | Port (Standard 3000) und Adresse, auf der er lauscht (Standard `0.0.0.0` = von außen erreichbar; nur lokal: `127.0.0.1`). |
 | `DB_PATH` | Wo die Datenbank ihre Dateien ablegt, Standard: Docker-Volume. Mit einem Pfad (z. B. `/srv/tickly/db`) liegen die Daten dort, siehe [Datenbank an einen anderen Ort legen](#datenbank-an-einen-anderen-ort-legen). |
 | `RUN_AS` | Benutzer des Server-Containers als `uid:gid`, Standard `65532:65532`. Eigenen Benutzer eintragen, damit dir die Dateien in `BACKUP_PATH` gehören: `echo "RUN_AS=$(id -u):$(id -g)" >> .env`. Gilt nur für den Server, nicht für die Datenbank. |
 | `BACKUP_PATH` | Pfad für Sicherungen, besser auf einem anderen Laufwerk (siehe [Sicherung](#sicherung)). |
@@ -61,18 +62,35 @@ Der erste Administrator wird **nicht in der `.env`**, sondern im Browser angeleg
 
 Der Code schützt davor, dass jemand, der die Adresse zuerst erreicht, den Administrator anlegt. Er ändert sich bei jedem Neustart, solange noch kein Benutzer existiert, und wird danach nicht mehr gebraucht. Bis zur Einrichtung ist die Registrierung gesperrt, falsche Codes zählen wie Fehlanmeldungen für die IP-Sperre.
 
-Der Port ist an `127.0.0.1` gebunden. **Gib ihn nie direkt ins Internet frei**; öffentlicher Zugang läuft über den Tunnel (oder deinen eigenen Proxy, der die echte Adresse in `CF-Connecting-IP` bzw. `X-Forwarded-For` setzt).
+Der Port lauscht auf **allen Adressen** (`0.0.0.0`). Er spricht nur HTTP, ohne TLS. Stelle deshalb einen Proxy mit HTTPS davor und schütze den Port mit `ORIGIN_SECRET` und einer Firewall (siehe unten). Willst du ihn nur lokal erreichbar machen, setze `TICKLY_BIND=127.0.0.1`.
 
-## 3. Öffentlich über Cloudflare
+## 3. Öffentlich erreichbar machen
 
-1. Cloudflare Zero Trust → *Networks* → *Tunnels* → Tunnel anlegen, Token kopieren → in `.env` als `CLOUDFLARE_TUNNEL_TOKEN`.
-2. Beim Tunnel einen **Public Hostname** anlegen: deine Domain, Service `http://api:3000`.
-3. Starten mit Tunnel:
-   ```sh
-   docker compose --profile tunnel up -d --build
-   ```
+Tickly spricht HTTP auf Port 3000 (`TICKLY_PORT`). Davor kommt ein **Proxy, der TLS beendet** und an `http://<Docker-Host>:3000` weiterleitet. Liegt der Proxy im selben Docker-Netz, ist `http://api:3000` das Ziel.
 
-Cloudflare beendet TLS. Der Server erkennt über `CF-Connecting-IP` die **echte Besucher-Adresse** und über `CF-IPCountry` das Land (für Sperren, Protokoll und Sitzungsliste). Das Cookie wird als `Secure` gesetzt, sobald `PUBLIC_URL` mit `https://` beginnt.
+**1. `PUBLIC_URL`** in der `.env` auf die öffentliche Adresse setzen, exakt wie im Browser (`https://zeit.example.com`). Passkeys und Cookies hängen daran.
+
+**2. Origin-Secret.** Weil der Port von außen erreichbar ist, kann ihn jeder direkt ansprechen und den Proxy umgehen. Mit `ORIGIN_SECRET` akzeptiert Tickly nur Anfragen, die den Header `X-Origin-Secret` mit genau diesem Wert tragen. Alles andere bekommt `403` und einen Eintrag im Protokoll (*Administration → Protokoll → Origin-Prüfung*, auch unter „Fehlversuche“).
+
+```sh
+openssl rand -base64 48        # in die .env als ORIGIN_SECRET
+```
+
+Den Header setzt der Proxy bei jeder Anfrage an Tickly:
+- **Zoraxy:** In der Regel für deine Domain unter den erweiterten Einstellungen einen **benutzerdefinierten Header** (Custom Header) hinzufügen: Name `X-Origin-Secret`, Wert wie in der `.env`.
+- **Nginx:** `proxy_set_header X-Origin-Secret "WERT";`
+- **Caddy:** `reverse_proxy tickly:3000 { header_up X-Origin-Secret "WERT" }`
+- **Cloudflare (ohne weiteren Proxy):** *Rules → Transform Rules → Modify Request Header* → *Set static*, Name `X-Origin-Secret`, Wert wie in der `.env`.
+
+Ohne gesetzten Header sieht man nur „403 Forbidden“. Prüfen kannst du es so: `curl -i -H 'X-Origin-Secret: WERT' http://HOST:3000/api/health` liefert `ok`. Der Docker-Healthcheck ist ausgenommen (er kommt von innen).
+
+Das Protokoll schreibt je Adresse höchstens einen Eintrag pro Minute, mit Pfad, Grund (fehlt/falsch) und der Adresse der Verbindung; weitere Anfragen werden gezählt und im nächsten Eintrag genannt. Der Wert des Headers wird nie protokolliert.
+
+**3. Firewall.** Öffne den Port nur für das, was ihn braucht. Der Proxy muss Tickly erreichen, das Internet nicht. Das Origin-Secret ist eine zweite Sicherung, kein Ersatz für eine Firewall, und es schützt nicht vor Mithören im selben Netz, weil die Verbindung Proxy → Tickly unverschlüsselt ist. Betreibe sie nur in einem vertrauenswürdigen Netz.
+
+**4. Echte Besucher-Adresse.** Der Server liest sie aus `CF-Connecting-IP`, `X-Forwarded-For` oder `X-Real-IP`, aber nur, wenn die Verbindung von einem vertrauenswürdigen Proxy kommt. Lokale und private Adressen (Docker-Netz, LAN) gelten automatisch, weitere Adressen trägst du unter `TRUSTED_PROXIES` ein. Mit Cloudflare kommt zusätzlich das Land über `CF-IPCountry`. Das Cookie wird als `Secure` gesetzt, sobald `PUBLIC_URL` mit `https://` beginnt.
+
+**Fehler 521 (Cloudflare):** Cloudflare erreicht deinen Server nicht. Meist stimmt der DNS-Eintrag nicht, der Proxy lauscht nicht auf dem Port, auf den Cloudflare zugreift (443 bei „Full“), oder eine Firewall blockiert.
 
 ## 4. Companion-Apps koppeln
 

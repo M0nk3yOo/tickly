@@ -30,6 +30,8 @@ async fn main() {
     let pool = db::connect(&cfg.database_url).await.unwrap_or_else(|e| panic!("Datenbank nicht erreichbar oder Migration fehlgeschlagen: {e}"));
     if let Err(e) = tickly_api::secrets::verify_and_migrate(&pool, &cfg.secrets).await { panic!("{e}"); }
     if !cfg.secrets.active() { tracing::warn!("TICKLY_SECRET ist nicht gesetzt: Sicherungen, TOTP-Geheimnisse und das SMTP-Passwort werden unverschlüsselt gespeichert"); }
+    if cfg.origin_secret.is_some() { tracing::info!("Origin-Prüfung aktiv: Anfragen ohne passenden Header X-Origin-Secret werden abgelehnt und protokolliert"); }
+    else if cfg.public_url.scheme() == "https" { tracing::warn!("ORIGIN_SECRET ist nicht gesetzt: Der Server nimmt Anfragen von jedem an, der den Port erreicht (nicht nur vom Proxy)"); }
     let app = Arc::new(App::new(cfg, pool));
     db::seed_if_empty(&app).await.unwrap_or_else(|e| panic!("Erste Daten konnten nicht angelegt werden: {}", e.1));
     tickly_api::backup::spawn_scheduler(app.clone());

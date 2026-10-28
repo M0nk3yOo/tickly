@@ -3,9 +3,9 @@ use crate::api::{auth, St};
 use crate::app::*;
 use axum::{
     extract::{ConnectInfo, Query, Request, State},
-    http::{header, HeaderMap},
+    http::{header, HeaderMap, StatusCode},
     middleware::Next,
-    response::Response,
+    response::{IntoResponse, Response},
     routing::{get, post},
     Extension, Json, Router,
 };
@@ -13,7 +13,7 @@ use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::{types::Json as SJson, PgPool};
-use std::{net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr}, sync::Arc};
+use std::{net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr}, sync::Arc, time::Instant};
 
 /// Die Adresse, von der die Anfrage tatsächlich kommt.
 #[derive(Clone, Copy, Debug)]
@@ -81,6 +81,37 @@ pub fn resolve(peer: Option<IpAddr>, h: &HeaderMap, extra: &[(IpAddr, u8)]) -> (
         return (peer.unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED)), country);
     }
     (peer.unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED)), None)
+}
+
+fn ct_eq(a: &[u8], b: &[u8]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).fold(0u8, |d, (x, y)| d | (x ^ y)) == 0
+}
+
+/// Origin-Prüfung: Ist `ORIGIN_SECRET` gesetzt, muss jede Anfrage den Header `X-Origin-Secret` mit genau diesem Wert tragen
+/// (setzt der vorgeschaltete Proxy). Alles andere bekommt 403 und einen Eintrag im Protokoll (Art „origin“), höchstens
+/// einmal je Adresse und Minute, damit niemand das Protokoll fluten kann. Ausnahme: der Healthcheck des Containers von Loopback.
+pub async fn origin_layer(State(app): St, req: Request, next: Next) -> Response {
+    let Some(secret) = app.cfg.origin_secret.as_deref() else { return next.run(req).await };
+    let peer = req.extensions().get::<ConnectInfo<SocketAddr>>().map(|c| c.0.ip());
+    if req.uri().path() == "/api/health" && peer.is_some_and(|p| p.is_loopback()) { return next.run(req).await }
+    let got = req.headers().get("x-origin-secret").and_then(|v| v.to_str().ok());
+    if got.is_some_and(|g| ct_eq(g.as_bytes(), secret.as_bytes())) { return next.run(req).await }
+    let ip = req.extensions().get::<ClientIp>().cloned().unwrap_or(ClientIp(peer.unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED)), None));
+    let key = ip_key(ip.0);
+    // Entscheidung ohne Sperre über ein await hinweg
+    let report: Option<u32> = {
+        let mut m = app.origin_hits.lock().unwrap();
+        if m.len() > 10_000 { m.clear(); }
+        let e = m.entry(key).or_insert((None, 0));
+        if e.0.is_none_or(|t| t.elapsed() >= std::time::Duration::from_secs(60)) { let n = e.1; *e = (Some(Instant::now()), 0); Some(n) } else { e.1 += 1; None }
+    };
+    if let Some(more) = report {
+        let detail = format!("X-Origin-Secret {} · {} {} · Verbindung von {}{}", if got.is_none() { "fehlt" } else { "ist falsch" }, req.method(), req.uri().path(),
+            peer.map(|p| p.to_string()).unwrap_or_else(|| "?".into()), if more > 0 { format!(" · +{more} weitere Anfragen seit dem letzten Eintrag") } else { String::new() });
+        tracing::warn!("Origin-Prüfung: {detail} (Client {})", ip.0);
+        log(&app, "origin", false, ip, req.headers(), None, None, &detail).await;
+    }
+    (StatusCode::FORBIDDEN, "Forbidden").into_response()
 }
 
 pub async fn client_ip_layer(State(app): St, mut req: Request, next: Next) -> Response {
@@ -241,6 +272,7 @@ async fn list_log(State(app): St, h: HeaderMap, Query(q): Query<LogQ>) -> Res<Js
         Some("block") => vec!["block", "unblock"],
         Some("admin") => vec!["admin", "backup", "restore", "edit"],
         Some("device") => vec!["device_pair"],
+        Some("origin") => vec!["origin"],
         _ => vec![],
     }.into_iter().map(String::from).collect();
     let only_fail = q.kind.as_deref() == Some("fail");
@@ -266,7 +298,7 @@ async fn blocked(app: &App) -> Res<Vec<Value>> {
 
 async fn security(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientIp>) -> Res<Json<Value>> {
     admin(&app, &h).await?;
-    Ok(Json(json!({ "policy": policy(&app.pool).await?, "blocked": blocked(&app).await?, "yourIp": ip.0.to_string() })))
+    Ok(Json(json!({ "policy": policy(&app.pool).await?, "blocked": blocked(&app).await?, "yourIp": ip.0.to_string(), "originSecret": app.cfg.origin_secret.is_some() })))
 }
 
 async fn put_security(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientIp>, Json(p): Json<SecurityPolicy>) -> Res<Json<Value>> {

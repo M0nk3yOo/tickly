@@ -65,6 +65,7 @@ pub fn router(app: Arc<App>) -> Router {
         .fallback_service(web)
         .layer(SetResponseHeaderLayer::if_not_present(header::CACHE_CONTROL, HeaderValue::from_static("no-cache")))
         .layer(CompressionLayer::new())
+        .layer(axum::middleware::from_fn_with_state(app.clone(), crate::netsec::origin_layer))
         .layer(axum::middleware::from_fn_with_state(app.clone(), crate::netsec::client_ip_layer))
         .with_state(app)
 }
