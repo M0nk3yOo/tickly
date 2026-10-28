@@ -1,6 +1,8 @@
 # Änderungen
 
-## Unveröffentlicht
+## 0.9.5
+
+Aktualisierung von 0.9.4: keine Änderungen an der Konfiguration oder Datenbank nötig.
 
 - E-Mails zeigen oben das Tickly-Logo. Es ist als Bild in die Mail eingebettet (nicht als Link), erscheint also auch dort, wo Mailprogramme Fremdbilder blockieren, und unabhängig von der Erreichbarkeit des Servers.
 - Die Seitenleiste zeigt unten links die laufende Serverversion („Server 0.9.4“).
