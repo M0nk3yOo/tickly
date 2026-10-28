@@ -52,6 +52,8 @@ const flag = cc => cc && /^[A-Z]{2}$/.test(cc) ? String.fromCodePoint(...[...cc]
 const countryName = cc => { try { return new Intl.DisplayNames(['de'], { type: 'region' }).of(cc) || cc; } catch (e) { return cc; } };
 const fmtAgo = iso => { if (!iso) return 'nie'; const d = (Date.now() - new Date(iso)) / 1000; return d < 90 ? 'gerade eben' : d < 3600 ? `vor ${Math.round(d / 60)} Min.` : d < 86400 ? `vor ${Math.round(d / 3600)} Std.` : d < 172800 ? 'gestern' : `vor ${Math.round(d / 86400)} Tagen`; };
 const hm = m => { m = Math.round(m); return `${pad(Math.floor(m / 60))}:${pad(m % 60)}`; };
+/** Uhrzeit, auch jenseits von Mitternacht (z. B. Prognose bei spätem Beginn): 28:58 → „04:58 (morgen)“ */
+const hmDay = m => m >= 1440 ? `${hm(m - 1440)} (morgen)` : hm(m);
 const dur = m => { const s = Math.round(m) < 0 ? '−' : ''; m = Math.round(Math.abs(m)); return `${s}${Math.floor(m / 60)}:${pad(m % 60)} h`; };
 /* Stunden:Minuten:Sekunden, z. B. 5:57:22 */
 const durS = m => { let t = Math.round(Math.max(0, m) * 60); return `${Math.floor(t / 3600)}:${pad(Math.floor(t % 3600 / 60))}:${pad(t % 60)}`; };

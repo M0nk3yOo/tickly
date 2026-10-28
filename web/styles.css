@@ -152,6 +152,7 @@ label.f input,label.f select{font-weight:400}
 .kv:last-child{border-bottom:0}
 .kv span:first-child{color:var(--ink-2)}
 .kv b{font-weight:600}
+.kv b .pos{color:var(--good-ink)} .kv b .neg{color:var(--bad-ink)}
 
 /* ---------- Ring ---------- */
 .ring{position:relative;width:176px;height:176px;flex:none}

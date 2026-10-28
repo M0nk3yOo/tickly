@@ -643,9 +643,12 @@ async fn stop_preview(State(app): St, h: HeaderMap, Json(r): Json<PreviewReq>) -
     let mut c = db::Calc::load(&app, &u, today, now).await?;
     if !c.has_day { return conflict("Heute läuft kein Tracking.") }
     let at = r.at.unwrap_or(now);
+    let before = c.with(total_balance);
     c.day.stop_web(now, at).map_err(|m| ApiError(StatusCode::CONFLICT, m))?;
     let s = c.with(|x| day_stat(x, today));
-    Ok(Json(json!({ "at": c.day.ended, "gross": s.gross, "net": s.net, "pause": s.gross - s.net, "counted": s.counted, "soll": s.soll, "start": s.start })))
+    // `diff`: was der Tag nach dem Beenden zum Überstundenkonto beiträgt (Minus wird jetzt verbucht, vorher zählte es nicht)
+    Ok(Json(json!({ "at": c.day.ended, "gross": s.gross, "net": s.net, "pause": s.gross - s.net, "counted": s.counted, "soll": s.soll, "start": s.start,
+        "diff": s.diff, "balanceBefore": before, "balanceAfter": c.with(total_balance) })))
 }
 
 /* ---------- Administration ---------- */

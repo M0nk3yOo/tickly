@@ -2,6 +2,9 @@
 
 ## Unveröffentlicht
 
+- **Beenden zeigt Minus:** Das Fenster „Tracking beenden“ zeigt zusätzlich den Saldo des Tages (Netto − Soll) und das Überstundenkonto vorher und nachher. Endet der Tag mit Minus, weist ein Hinweis darauf hin, dass es dem Überstundenkonto abgezogen wird.
+- Fehlerbehebung: Die voraussichtliche Tagesende-Zeit konnte über 24 Uhr hinausgehen („28:58“ bei Beginn um 20:27). Sie steht jetzt als „04:58 (morgen)“.
+- Fehlerbehebung: Plus- und Minuswerte in Zeilen mit Beschriftung (z. B. Einstellungen, Beenden-Fenster) hatten keine Farbe.
 - **Überstunden-Stand zu Beginn nachtragen:** Konten, bei denen er noch nicht festgelegt ist (erster Administrator über die Einrichtung, direkt vom Administrator angelegte Konten, bestehende Konten mit 0), sehen nach der Anmeldung ein Eingabefenster und einen Hinweis. Der Benutzer legt ihn **einmalig** selbst fest (auch „Keine Überstunden“ = 0), danach kann ihn nur noch ein Administrator ändern. Die Einrichtungsseite fragt ihn ebenfalls ab. In der Benutzerverwaltung steht „noch nicht festgelegt“. Zuvor stand in den Einstellungen irreführend „Bei der Registrierung festgelegt“.
 - Sicherheitsfragen: In der Auswahl lässt sich jede Frage nur einmal wählen (in den anderen Auswahlfeldern ist sie ausgegraut). Bisher meldete erst das Absenden den Fehler.
 

@@ -1834,6 +1834,11 @@ async fn web_stop_at_manual_time_with_preview() {
     assert_eq!(st, StatusCode::OK, "{p}");
     assert_eq!(p["at"], 780.0);
     assert!(p["gross"].as_f64().unwrap() > 0.0 && p["net"].as_f64().unwrap() <= p["gross"].as_f64().unwrap());
+    // Minus wird angezeigt: Saldo des Tages (Netto − Soll) und das Überstundenkonto vorher/nachher
+    let (counted, soll, diff) = (p["counted"].as_f64().unwrap(), p["soll"].as_f64().unwrap(), p["diff"].as_f64().unwrap());
+    assert!((diff - (counted - soll)).abs() < 1e-6 && diff < 0.0, "{p}");
+    let (b0, b1) = (p["balanceBefore"].as_f64().unwrap(), p["balanceAfter"].as_f64().unwrap());
+    assert!((b1 - (b0 + diff)).abs() < 1e-6, "ein offener Tag zählte bisher kein Minus: {p}");
     let later = c.post("/api/tracking/stop-preview", json!({"at": 840, "now": now})).await.1["gross"].as_f64().unwrap();
     assert!(later > p["gross"].as_f64().unwrap());
     assert_eq!(c.post("/api/tracking/stop-preview", json!({"at": 950, "now": now})).await.0, StatusCode::CONFLICT);

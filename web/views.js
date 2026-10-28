@@ -242,7 +242,10 @@ function stopSummary(m) {
   const p = m.prev; if (!p) return `<p class="muted sm">Berechne …</p>`;
   return `<div class="stopsum"><div class="kv"><span>Arbeitsbeginn</span><b class="mono">${hm(p.start)}</b></div><div class="kv"><span>Ende</span><b class="mono">${hm(p.at)}</b></div>
     <div class="kv"><span>Brutto (Anwesenheit)</span><b class="mono">${dur(p.gross)}</b></div><div class="kv"><span>Pause (abgezogen)</span><b class="mono">${p.pause > 0 ? '−' : ''}${dur(p.pause)}</b></div>
-    <div class="kv"><span><b>Netto</b></span><b class="mono">${dur(p.net)}</b></div>${p.soll ? `<div class="kv"><span>Tagessoll</span><b class="mono">${dur(p.soll)}</b></div>` : ''}</div>`;
+    <div class="kv"><span><b>Netto</b></span><b class="mono">${dur(p.net)}</b></div>${p.soll ? `<div class="kv"><span>Tagessoll</span><b class="mono">${dur(p.soll)}</b></div>` : ''}
+    ${p.diff != null ? `<div class="kv"><span><b>Saldo des Tages</b></span><b class="mono">${sgn(p.diff)}</b></div>` : ''}
+    ${p.balanceBefore != null ? `<div class="kv"><span>Überstundenkonto</span><b class="mono">${sgn(p.balanceBefore)} → ${sgn(p.balanceAfter)}</b></div>` : ''}</div>
+    ${p.diff != null && p.diff < -0.5 ? `<div class="callout warn" style="margin-top:10px">${ic('info')}<span>Du beendest mit <b>${dur(-p.diff)} Minus</b> gegenüber dem Tagessoll. Das wird nach dem Beenden dem Überstundenkonto abgezogen.</span></div>` : ''}`;
 }
 function mfaBanner() {
   const m = S.mfa; if (!m || !m.required || m.compliant) return '';
@@ -393,7 +396,7 @@ function vDashboard() {
           <div class="kv"><span>Arbeitsbeginn</span><b>${t.start != null ? hm(t.start) : '–'}${t.start != null ? ` <span class="badge brand" style="margin-left:4px">${ic('power', 12)} ${startViaWeb() ? 'Web' : S.os === 'windows' ? 'Windows' : 'macOS'}-Start</span>` : ''}</b></div>
           <div class="kv"><span>Brutto (Anwesenheit)</span><b class="mono">${durN(t.gross)} h</b></div>
           <div class="kv"><span>${S.set.mode === 'net' ? 'Pause abgezogen' : 'Pause (nicht abgezogen)'}</span><b class="mono">${S.set.mode === 'net' ? '−' : ''}${durN(S.set.mode === 'net' ? t.brk : Math.max(t.rule, t.lockedBreak))} h</b></div>
-          <div class="kv"><span>${dayEnded ? 'Arbeitsende' : 'Voraussichtliches Ende'}</span><b class="mono">${dayEnded ? hm(S.day.ended) : fe ? hm(fe) : over ? 'Soll erreicht' : '–'}</b></div>
+          <div class="kv"><span>${dayEnded ? 'Arbeitsende' : 'Voraussichtliches Ende'}</span><b class="mono">${dayEnded ? hm(S.day.ended) : fe ? hmDay(fe) : over ? 'Soll erreicht' : '–'}</b></div>
           <div class="kv"><span>Erfassungsmodus</span><b>${S.set.mode === 'net' ? 'Netto' : 'Brutto'}</b></div>
         </div></div>
       ${longTrack}
