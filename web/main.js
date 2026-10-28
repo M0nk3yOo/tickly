@@ -549,6 +549,7 @@ document.addEventListener('change', e => onInput(e, false));
 document.addEventListener('change', e => {
   const t = e.target; if (!t || !t.dataset || !t.dataset.sq) return;
   const c = $('#' + t.id.replace('-q', '-c')); if (c) { c.style.display = t.value === '__own' ? '' : 'none'; if (t.value === '__own') c.focus(); }
+  syncSecQ(t.id.replace(/-q\d$/, ''));
 });
 document.addEventListener('input', e => {
   if (e.target.id === 'sess-q') { S.sessQ = e.target.value; const p = e.target.selectionStart; render(); const n = $('#sess-q'); if (n) { n.focus(); n.setSelectionRange(p, p); } return; }

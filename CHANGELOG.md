@@ -1,5 +1,9 @@
 # Änderungen
 
+## Unveröffentlicht
+
+- Sicherheitsfragen: In der Auswahl lässt sich jede Frage nur einmal wählen (in den anderen Auswahlfeldern ist sie ausgegraut). Bisher meldete erst das Absenden den Fehler.
+
 ## 0.9.3
 
 **Wichtig beim Aktualisieren von 0.9.2:** Der Port lauscht jetzt standardmäßig auf **allen Adressen** (`0.0.0.0`), vorher nur lokal. Wer ihn weiter nur lokal erreichbar halten will, setzt `TICKLY_BIND=127.0.0.1` in der `.env`. Sonst gehört `ORIGIN_SECRET` gesetzt (und eine Firewall davor). Den Cloudflare-Tunnel (`--profile tunnel`) gibt es in der Compose-Datei nicht mehr.

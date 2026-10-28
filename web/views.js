@@ -185,9 +185,14 @@ function secQForm(prefix) {
   const list = S.questionList || [], start = [0, 4, 8];
   return `<div class="f"><span style="font-size:12.5px;color:var(--ink-2);font-weight:550">Sicherheitsfragen</span>
     <span class="hint">Damit kannst du dein Passwort selbst zurücksetzen, wenn du es vergisst. Wähle drei verschiedene Fragen, die nur du beantworten kannst. Groß-/Kleinschreibung und Satzzeichen spielen keine Rolle.</span>
-    ${[1, 2, 3].map(i => `<div class="sq"><select id="${prefix}-q${i}" data-sq="1">${list.map((q, k) => `<option value="${esc(q)}" ${k === start[i - 1] ? 'selected' : ''}>${esc(q)}</option>`).join('')}<option value="__own">Eigene Frage …</option></select>
+    ${[1, 2, 3].map(i => `<div class="sq"><select id="${prefix}-q${i}" data-sq="1">${list.map((q, k) => `<option value="${esc(q)}" ${k === start[i - 1] ? 'selected' : ''} ${start.includes(k) && k !== start[i - 1] ? 'disabled' : ''}>${esc(q)}</option>`).join('')}<option value="__own">Eigene Frage …</option></select>
       <input type="text" id="${prefix}-c${i}" placeholder="Eigene Frage (8 bis 120 Zeichen)" maxlength="120" style="display:none" autocomplete="off">
       <input type="text" id="${prefix}-a${i}" placeholder="Antwort" maxlength="100" autocomplete="off"></div>`).join('')}</div>`;
+}
+/* Jede Frage nur einmal: Was in einer Auswahl gewählt ist, ist in den anderen gesperrt */
+function syncSecQ(prefix) {
+  const sels = [1, 2, 3].map(i => $(`#${prefix}-q${i}`)).filter(Boolean), taken = sels.map(s => s.value);
+  sels.forEach((s, i) => [...s.options].forEach(o => { o.disabled = o.value !== '__own' && taken.some((v, j) => j !== i && v === o.value); }));
 }
 function readSecQ(prefix) {
   return [1, 2, 3].map(i => { let q = $(`#${prefix}-q${i}`).value; if (q === '__own') q = $(`#${prefix}-c${i}`).value.trim(); return { question: q, answer: $(`#${prefix}-a${i}`).value.trim() }; });
