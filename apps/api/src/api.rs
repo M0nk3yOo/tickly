@@ -427,7 +427,7 @@ fn track_label(d: &DayState) -> &'static str {
     match d.track() { Track::Running => "tracking", Track::Locked => "locked", Track::Paused => "paused", Track::Asking => "asking", Track::Idle | Track::Stopped => "none" }
 }
 
-/// Heutiger Status je Benutzer („tracking“, „locked“, „vacation“ …) für die Benutzerverwaltung.
+/// Heutiger Status je Benutzer („tracking“, „locked“, „vacation“ …) für die Serververwaltung.
 async fn today_labels(app: &App, today: NaiveDate) -> Res<HashMap<String, String>> {
     let mut m = HashMap::new();
     let days: Vec<(String, SJson<DayState>)> = sqlx::query_as("SELECT user_id, state FROM days WHERE day = $1").bind(today).fetch_all(&app.pool).await?;

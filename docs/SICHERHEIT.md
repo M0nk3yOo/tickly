@@ -46,7 +46,7 @@ Tickly erfasst personenbezogene Beschäftigtendaten (Arbeitszeiten, App-Namen, I
 
 - **Transparenz:** Benutzer sehen alles, was erfasst wird, in der Tagesansicht. Informiere sie vorab, was erfasst wird (und was nicht).
 - **Datensparsamkeit:** App-Erfassung lässt sich abschalten, Apps lassen sich ausschließen; Fenstertitel werden nie gelesen.
-- **Aufbewahrung:** Arbeitszeitdaten haben **keine automatische Löschfrist** (bewusste Entscheidung) – lege eine organisatorische Regel fest und lösche Konten bei Bedarf in der Benutzerverwaltung. Das Protokoll wird automatisch nach `LOG_RETENTION_DAYS` bereinigt.
+- **Aufbewahrung:** Arbeitszeitdaten haben **keine automatische Löschfrist** (bewusste Entscheidung) – lege eine organisatorische Regel fest und lösche Konten bei Bedarf in der Serververwaltung. Das Protokoll wird automatisch nach `LOG_RETENTION_DAYS` bereinigt.
 - **Auftragsverarbeitung:** Betreibst du Tickly selbst, bleibt alles bei dir. Ein vorgeschalteter Dienst wie Cloudflare sieht als Proxy den Datenverkehr; schließe ggf. einen AV-Vertrag.
 - Dieses Dokument ist keine Rechtsberatung.
 

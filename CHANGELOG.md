@@ -1,5 +1,9 @@
 # Änderungen
 
+## Unveröffentlicht
+
+- Der Menüpunkt „Benutzerverwaltung“ heißt jetzt **Serververwaltung**, denn er enthält mehr als die Benutzer (Richtlinien, Sicherheit, E-Mail, Sitzungen, Protokoll, Sicherung).
+
 ## 0.9.4
 
 **Releases entstehen lokal:** `scripts/release.sh` baut die Installer und das Docker-Image auf dem Entwicklungsrechner (Windows nur noch als `…-setup.exe`, kein `.msi`). Die Compose-Datei wurde dabei erstmals in einem echten Docker getestet.

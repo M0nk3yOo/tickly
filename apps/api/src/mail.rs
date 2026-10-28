@@ -173,7 +173,7 @@ pub async fn registration_ready(app: &Arc<App>, u: &UserRow) {
     if !cfg.notify_admin_registration { return }
     let to = admin_emails(&app.pool).await;
     spawn(app.clone(), to, format!("Neue Registrierung wartet auf Freigabe: {}", u.name), "Neue Registrierung".into(),
-        vec![format!("{} ({}) hat sich registriert und wartet auf deine Freigabe.", u.name, u.email)], Some(("Benutzerverwaltung öffnen".into(), format!("{}/#/admin", app.cfg.public_url.as_str().trim_end_matches('/')))));
+        vec![format!("{} ({}) hat sich registriert und wartet auf deine Freigabe.", u.name, u.email)], Some(("Serververwaltung öffnen".into(), format!("{}/#/admin", app.cfg.public_url.as_str().trim_end_matches('/')))));
 }
 
 /* ---------- Endpunkte ---------- */

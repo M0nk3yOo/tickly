@@ -186,7 +186,7 @@ pub async fn touch_user(pool: &PgPool, uid: &str) {
     let _ = sqlx::query("UPDATE users SET last_seen_at = now() WHERE id = $1").bind(uid).execute(pool).await;
 }
 
-/// „Jetzt aktiv“, „vor 25 Min.“ … für die Benutzerverwaltung.
+/// „Jetzt aktiv“, „vor 25 Min.“ … für die Serververwaltung.
 pub fn last_label(u: &UserRow, now: DateTime<Utc>) -> String {
     match u.status.as_str() {
         "invited" => return "Einladung gesendet".into(),

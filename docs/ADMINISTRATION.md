@@ -1,6 +1,6 @@
 # Administration
 
-Administratoren sehen in der Seitenleiste **Benutzerverwaltung** mit diesen Reitern.
+Administratoren sehen in der Seitenleiste **Serververwaltung** mit diesen Reitern: Benutzer, Registrierung & Richtlinien, Sicherheit & Sperren, E-Mail, Sitzungen & Geräte, Protokoll und Sicherung.
 
 ## Benutzer
 
