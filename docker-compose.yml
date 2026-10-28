@@ -25,6 +25,9 @@ services:
   api:
     build: .
     restart: unless-stopped
+    # Benutzer, als der der Server läuft (uid:gid). Standard: der unprivilegierte Benutzer des Images. Mit RUN_AS gehören
+    # Dateien in BACKUP_PATH deinem eigenen Benutzer.
+    user: ${RUN_AS:-65532:65532}
     depends_on:
       db:
         condition: service_healthy
@@ -42,7 +45,7 @@ services:
       LOG_RETENTION_DAYS: ${LOG_RETENTION_DAYS:-365}
       RUST_LOG: ${RUST_LOG:-info}
     volumes:
-      # Getrenntes Sicherungsverzeichnis. Eigenen Pfad per BACKUP_PATH, z. B. ein anderes Laufwerk (Verzeichnis muss für UID 65532 beschreibbar sein)
+      # Getrenntes Sicherungsverzeichnis. Eigenen Pfad per BACKUP_PATH, z. B. ein anderes Laufwerk (Verzeichnis muss für den Benutzer aus RUN_AS beschreibbar sein)
       - ${BACKUP_PATH:-tickly-backups}:/backups
     # Nur lokal erreichbar; öffentlich geht es ausschließlich über den Cloudflare-Tunnel.
     ports:

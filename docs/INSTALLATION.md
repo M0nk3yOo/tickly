@@ -33,6 +33,7 @@ Wichtige Werte in `.env`:
 | `TICKLY_SECRET` | Schlüssel zum **Verschlüsseln** von Sicherungen, TOTP-Geheimnissen und dem SMTP-Passwort (mind. 24 Zeichen, besser länger: `openssl rand -base64 48`). **Sicher aufbewahren, nie ändern oder verlieren** – ohne ihn sind verschlüsselte Daten nicht mehr lesbar. |
 | `CLOUDFLARE_TUNNEL_TOKEN` | Token des Tunnels (siehe unten), nur für `--profile tunnel`. |
 | `DB_PATH` | Wo die Datenbank ihre Dateien ablegt, Standard: Docker-Volume. Mit einem Pfad (z. B. `/srv/tickly/db`) liegen die Daten dort, siehe [Datenbank an einen anderen Ort legen](#datenbank-an-einen-anderen-ort-legen). |
+| `RUN_AS` | Benutzer des Server-Containers als `uid:gid`, Standard `65532:65532`. Eigenen Benutzer eintragen, damit dir die Dateien in `BACKUP_PATH` gehören: `echo "RUN_AS=$(id -u):$(id -g)" >> .env`. Gilt nur für den Server, nicht für die Datenbank. |
 | `BACKUP_PATH` | Pfad für Sicherungen, besser auf einem anderen Laufwerk (siehe [Sicherung](#sicherung)). |
 | `TICKLY_TZ` | Zeitzone für Arbeitstage, Standard `Europe/Berlin`. |
 | `TRUSTED_PROXIES` | Zusätzliche Proxy-Adressen, deren Weiterleitungs-Header gelten (Komma getrennt, auch CIDR). Lokale/private Adressen (Docker-Netz) gelten automatisch. |
@@ -95,7 +96,7 @@ DB_PATH=/srv/tickly/db      # absolut, oder relativ zur docker-compose.yml, z. B
 - **Automatisch** täglich zur eingestellten Uhrzeit (Standard 02:00), die letzten Sicherungen bleiben erhalten; einstellbar unter *Administration → Sicherung*.
 - **Getrenntes Verzeichnis:** Im Compose-Betrieb liegt `/backups` im Docker-Volume `tickly-backups`. Besser ein Pfad auf einem anderen Laufwerk oder Server (NAS):
   ```sh
-  mkdir -p /mnt/nas/tickly-backups && sudo chown 65532 /mnt/nas/tickly-backups   # der Container läuft als UID 65532
+  mkdir -p /mnt/nas/tickly-backups && sudo chown 65532 /mnt/nas/tickly-backups   # der Container läuft als UID 65532 (oder als RUN_AS)
   # in .env:  BACKUP_PATH=/mnt/nas/tickly-backups
   ```
 - **Verschlüsselt**, wenn `TICKLY_SECRET` gesetzt ist (Dateiendung `.json.gz.enc`).
@@ -144,5 +145,5 @@ cargo run --release -p tickly-api      # liest die Weboberfläche aus ./web (WEB
 | Seite zeigt „Willkommen bei Tickly“ und verlangt einen Code | Es gibt noch keinen Benutzer. Den Einrichtungscode zeigt `docker compose logs api`. |
 | Passkey-Anmeldung funktioniert nicht | `PUBLIC_URL` muss exakt die Adresse sein, unter der du den Server aufrufst (HTTPS bzw. `localhost`). |
 | Alle Besucher erscheinen mit einer internen Adresse (172.x) | Der Proxy liefert keine `CF-Connecting-IP`/`X-Forwarded-For`, oder seine Adresse ist nicht vertrauenswürdig → `TRUSTED_PROXIES` setzen. |
-| Sicherung ins Verzeichnis schlägt fehl | Rechte: Der Container läuft als UID 65532 und muss schreiben dürfen. Die Prüfung steht unter *Administration → Sicherung*. |
+| Sicherung ins Verzeichnis schlägt fehl | Rechte: Der Server läuft als `RUN_AS` (Standard UID 65532) und muss schreiben dürfen. Bei eigenem `RUN_AS` muss `BACKUP_PATH` gesetzt sein und diesem Benutzer gehören. Die Prüfung steht unter *Administration → Sicherung*. |
 | Gesperrt wegen Fehlversuchen | Anderer Administrator entsperrt unter *Sicherheit & Sperren*; notfalls `docker compose exec db psql -U tickly -c "update ip_blocks set unblocked_at = now() where unblocked_at is null"`. |
