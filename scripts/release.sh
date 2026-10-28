@@ -43,6 +43,10 @@ v() { grep -m1 -E "$2" "$1" | sed -E 's/.*"?([0-9]+\.[0-9]+\.[0-9]+)"?.*/\1/'; }
 [ "$(v apps/companion/src-tauri/Cargo.toml '^version')" = "$VERSION" ] || die "src-tauri/Cargo.toml hat nicht die Version $VERSION"
 grep -q "^## $VERSION\$" CHANGELOG.md || die "CHANGELOG.md hat keinen Abschnitt „## $VERSION“"
 command -v npm >/dev/null || die "npm fehlt"
+INSTALLED_TARGETS="$(rustup target list --installed)"
+for t in aarch64-apple-darwin x86_64-apple-darwin $([ "$WIN" = 1 ] && echo x86_64-pc-windows-msvc); do
+  echo "$INSTALLED_TARGETS" | grep -qx "$t" || die "Rust-Ziel $t fehlt (rustup target add $t)"
+done
 if [ "$WIN" = 1 ]; then for t in cargo-xwin makensis clang-cl; do command -v "$t" >/dev/null || die "$t fehlt (brew install llvm nsis; cargo install --locked cargo-xwin)"; done; fi
 if [ "$DOCKER" = 1 ]; then
   docker info >/dev/null 2>&1 || die "Docker läuft nicht (colima start)"; docker buildx version >/dev/null 2>&1 || die "docker buildx fehlt"
