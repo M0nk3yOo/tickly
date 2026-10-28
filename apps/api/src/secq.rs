@@ -103,7 +103,7 @@ fn fake_questions(app: &App, email: &str) -> Vec<String> {
 }
 
 /// Zufälliges Initialpasswort: erfüllt die Richtlinie, ohne leicht verwechselbare Zeichen.
-fn generate_password(min_len: usize) -> String {
+pub fn generate_password(min_len: usize) -> String {
     use argon2::password_hash::rand_core::{OsRng, RngCore};
     const UP: &[u8] = b"ABCDEFGHJKMNPQRSTUVWXYZ";
     const LO: &[u8] = b"abcdefghijkmnpqrstuvwxyz";
@@ -193,6 +193,11 @@ async fn reset(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientIp>,
     Ok(Json(json!({ "ok": true })))
 }
 
+/// Müssen für dieses Konto noch Sicherheitsfragen festgelegt werden? (Funktion an, Konto hat ein Passwort, noch keine Fragen)
+pub async fn needs_questions(app: &App, u: &UserRow) -> Res<bool> {
+    Ok(db::reg_policy(&app.pool).await?.sec_questions && u.password_hash.is_some() && !has_answers(&app.pool, &u.id).await?)
+}
+
 /// Eigener Stand: Sind Fragen hinterlegt, und welche?
 async fn mine(State(app): St, h: HeaderMap) -> Res<Json<Value>> {
     let u = auth(&app, &h, false).await?;
@@ -225,7 +230,7 @@ async fn set_mine(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientI
 }
 
 #[derive(Deserialize)]
-struct RequiredIn { password: String }
+struct RequiredIn { password: String, #[serde(default)] questions: Vec<Qa> }
 
 /// Erzwungene Änderung nach einem Initialpasswort. Gilt nur in der gesperrten Sitzung nach der Passwort-Anmeldung.
 async fn change_required(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientIp>, Json(r): Json<RequiredIn>) -> Res<Json<Value>> {
@@ -234,7 +239,11 @@ async fn change_required(State(app): St, h: HeaderMap, Extension(ip): Extension<
     if !u.must_change_pw { return bad("Es ist keine Passwortänderung erforderlich") }
     if let Some(m) = password_problem(&r.password, db::reg_policy(&app.pool).await?.min_pw) { return bad(m) }
     if u.password_hash.as_deref().is_some_and(|ph| verify_password(ph, &r.password)) { return bad("Das neue Passwort muss sich vom Initialpasswort unterscheiden") }
+    // Fehlen noch Sicherheitsfragen (z. B. bei einem vom Administrator angelegten Konto), werden sie jetzt nachgetragen
+    let need_q = needs_questions(&app, &u).await?;
+    if need_q { validate(&r.questions).map_err(|m| ApiError(axum::http::StatusCode::BAD_REQUEST, m))?; }
     sqlx::query("UPDATE users SET password_hash = $2, must_change_pw = false WHERE id = $1").bind(&u.id).bind(hash_password(&r.password)).execute(&app.pool).await?;
+    if need_q { store(&app.pool, &u.id, &r.questions).await?; }
     let cur = sid_from(&h).unwrap_or_default();
     sqlx::query("UPDATE sessions SET pw_change = false WHERE id = $1").bind(&cur).execute(&app.pool).await?;
     sqlx::query("DELETE FROM sessions WHERE user_id = $1 AND id <> $2").bind(&u.id).bind(&cur).execute(&app.pool).await?;

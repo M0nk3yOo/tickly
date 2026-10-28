@@ -205,10 +205,11 @@ function secqBanner() {
 }
 function vPwGate() {
   return `<div class="auth">${authArt()}<div class="auth-form"><div class="auth-box">
-    <div><h1>Neues Passwort festlegen</h1><p class="muted" style="margin-top:4px">Ein Administrator hat dein Passwort zurückgesetzt. Lege jetzt ein eigenes fest, dann geht es sofort weiter.</p></div>
+    <div><h1>Neues Passwort festlegen</h1><p class="muted" style="margin-top:4px">Ein Administrator hat dein Passwort gesetzt. Lege jetzt ein eigenes fest${S.pwGate && S.pwGate.needsQuestions ? ' und wähle Sicherheitsfragen, mit denen du es später selbst zurücksetzen kannst' : ''}, dann geht es sofort weiter.</p></div>
     <label class="f">Neues Passwort<input type="password" id="rs-pw" autocomplete="new-password" autofocus></label><div class="pwrules" id="pw-rules">${pwRulesHtml('')}</div>
     <label class="f">Passwort wiederholen<input type="password" id="rs-pw2" autocomplete="new-password"></label>
-    <button class="btn primary lg block" data-a="pwRequired">Passwort speichern</button>
+    ${S.pwGate && S.pwGate.needsQuestions ? secQForm('pg') : ''}
+    <button class="btn primary lg block" data-a="pwRequired">${S.pwGate && S.pwGate.needsQuestions ? 'Speichern und weiter' : 'Passwort speichern'}</button>
     <p class="sm" style="text-align:center"><a href="#/login" data-a="logout" style="color:var(--brand);font-weight:600">Abmelden</a></p>
   </div></div></div>`;
 }
@@ -988,8 +989,10 @@ function renderModal() {
       <label class="f">E-Mail<input type="email" value="${esc(u.email)}" data-in="modal.u.email" data-nr="1" placeholder="name@firma.de"></label>
       <div class="row wrap"><label class="f grow">Rolle<select data-in="modal.u.role" data-nr="1"><option value="user" ${u.role === 'user' ? 'selected' : ''}>Benutzer</option><option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Administrator</option></select></label>
       <label class="f grow">Wochensoll (h)<input type="number" style="width:100%;text-align:left" value="${u.week}" data-in="modal.u.week" data-type="num" data-nr="1"></label>${u.isNew ? '' : `<label class="f grow">Überstunden-Übertrag (h)<input type="number" step="0.25" style="width:100%;text-align:left" value="${u.startBal ?? 0}" data-in="modal.u.startBal" data-type="num" data-nr="1"></label>`}</div>
-      ${u.isNew ? `<p class="hint">Der Benutzer erhält einen Link zur Registrierung und kann sich anschließend per Passwort oder Passkey anmelden.</p>` : `<div class="chips">${self ? '' : `<button class="btn sm" data-a="pwAdminOpen">${ic('key', 14)} Neues Passwort setzen</button>`}<button class="btn sm" data-a="pkReset" ${u.passkeys ? '' : 'disabled'}>${ic('fp', 14)} Passkeys zurücksetzen (${u.passkeys})</button><button class="btn sm" data-a="endAllSess" data-id="${u.id}">${ic('logout', 14)} Alle Sitzungen beenden</button><button class="btn sm" data-a="totpReset" data-id="${u.id}" ${u.totp ? '' : 'disabled'}>${ic('shield', 14)} TOTP zurücksetzen</button></div>`}
-      </div><div class="mf">${u.isNew ? '' : `<div class="row" style="margin-right:auto">${self ? '' : `<button class="btn danger" data-a="userDel" data-id="${u.id}">Löschen</button>${u.status === 'blocked' ? `<button class="btn" data-a="userStatus" data-id="${u.id}" data-v="active">Entsperren</button>` : `<button class="btn" data-a="userStatus" data-id="${u.id}" data-v="blocked">Sperren</button>`}`}</div>`}<button class="btn" data-a="modalClose">Abbrechen</button><button class="btn primary" data-a="userSave">${u.isNew ? 'Einladung senden' : 'Speichern'}</button></div></div></div>`;
+      ${u.isNew ? `<label class="chk"><input type="checkbox" ${u.direct ? 'checked' : ''} data-a="inviteDirect">Direkt mit Initialpasswort anlegen (statt Einladung per Link)</label>
+        ${u.direct ? `<label class="f">Initialpasswort (leer lassen = zufällig erzeugen)<input type="text" value="${esc(u.pw || '')}" data-in="modal.u.pw" data-nr="1" autocomplete="off" spellcheck="false" class="mono"></label>
+          <p class="hint">Der Benutzer meldet sich mit seiner E-Mail und diesem Passwort an und legt dann ein eigenes Passwort und seine Sicherheitsfragen fest. Das Konto ist sofort aktiv.</p>` : `<p class="hint">Der Benutzer erhält einen Link zur Registrierung und kann sich anschließend per Passwort oder Passkey anmelden.</p>`}` : `<div class="chips">${self ? '' : `<button class="btn sm" data-a="pwAdminOpen">${ic('key', 14)} Neues Passwort setzen</button>`}<button class="btn sm" data-a="pkReset" ${u.passkeys ? '' : 'disabled'}>${ic('fp', 14)} Passkeys zurücksetzen (${u.passkeys})</button><button class="btn sm" data-a="endAllSess" data-id="${u.id}">${ic('logout', 14)} Alle Sitzungen beenden</button><button class="btn sm" data-a="totpReset" data-id="${u.id}" ${u.totp ? '' : 'disabled'}>${ic('shield', 14)} TOTP zurücksetzen</button></div>`}
+      </div><div class="mf">${u.isNew ? '' : `<div class="row" style="margin-right:auto">${self ? '' : `<button class="btn danger" data-a="userDel" data-id="${u.id}">Löschen</button>${u.status === 'blocked' ? `<button class="btn" data-a="userStatus" data-id="${u.id}" data-v="active">Entsperren</button>` : `<button class="btn" data-a="userStatus" data-id="${u.id}" data-v="blocked">Sperren</button>`}`}</div>`}<button class="btn" data-a="modalClose">Abbrechen</button><button class="btn primary" data-a="userSave">${u.isNew ? (u.direct ? 'Konto anlegen' : 'Einladung senden') : 'Speichern'}</button></div></div></div>`;
   }
   if (m.type === 'mfaRemind') return `<div class="ov"><div class="modal" style="width:min(450px,100%)"><div class="mh"><h3>Konto absichern</h3><button class="ibtn right" data-a="modalClose">${ic('x')}</button></div>
     <div class="mb"><div class="callout warn">${ic('shield')}<span>Dein Administrator verlangt für alle Konten einen <b>Passkey</b> oder eine <b>Authenticator-App</b>.</span></div>
@@ -1014,11 +1017,11 @@ function renderModal() {
       <label class="f">Eigenes Initialpasswort (leer lassen = zufällig erzeugen)<input type="text" id="ap-pw" autocomplete="off" spellcheck="false" class="mono"></label>
       <p class="hint">Ein erzeugtes Passwort ist lang und zufällig. Gib es dem Benutzer auf einem sicheren Weg weiter (nicht per E-Mail im Klartext).</p></div>
     <div class="mf"><button class="btn" data-a="modalClose">Abbrechen</button><button class="btn primary" data-a="pwAdminSet">Passwort setzen</button></div></div></div>`;
-  if (m.type === 'adminpwDone') return `<div class="ov"><div class="modal" style="width:min(460px,100%)"><div class="mh"><h3>Initialpasswort gesetzt</h3><button class="ibtn right" data-a="modalClose">${ic('x')}</button></div>
-    <div class="mb"><p>Initialpasswort für <b>${esc(m.u.name)}</b>. Es wird nur jetzt angezeigt:</p>
+  if (m.type === 'adminpwDone') return `<div class="ov"><div class="modal" style="width:min(460px,100%)"><div class="mh"><h3>${m.created ? 'Konto angelegt' : 'Initialpasswort gesetzt'}</h3><button class="ibtn right" data-a="modalClose">${ic('x')}</button></div>
+    <div class="mb"><p>${m.created ? 'Das Konto ist aktiv. ' : ''}Initialpasswort für <b>${esc(m.u.name)}</b>. Es wird nur jetzt angezeigt:</p>
       <div class="row" style="gap:8px"><input type="text" readonly value="${esc(m.password)}" class="mono grow" style="user-select:all" onclick="this.select()"><button class="btn" data-a="pwCopy">Kopieren</button></div>
       ${m.pwLogin ? '' : `<div class="callout warn">${ic('info')}<span>Die Anmeldung mit Passwort ist für dieses Konto abgeschaltet (Passkey). Das Passwort gilt erst, wenn der Benutzer sie wieder einschaltet.</span></div>`}
-      <p class="hint">Der Benutzer muss es beim nächsten Anmelden ändern.</p></div>
+      <p class="hint">Der Benutzer muss es beim ${m.created ? 'ersten' : 'nächsten'} Anmelden ändern${m.created ? ' und Sicherheitsfragen festlegen' : ''}.</p></div>
     <div class="mf"><button class="btn primary" data-a="modalClose">Fertig</button></div></div></div>`;
   if (m.type === 'pwchange') return `<div class="ov"><div class="modal" style="width:min(420px,100%)"><div class="mh"><h3>Passwort ändern</h3><button class="ibtn right" data-a="modalClose">${ic('x')}</button></div>
     <div class="mb"><label class="f">Aktuelles Passwort<input type="password" id="pw-cur" autocomplete="current-password"></label>

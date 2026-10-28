@@ -1884,3 +1884,57 @@ async fn long_tracking_mail_and_midnight_carry_over() {
     let prev = db::get_day(&mut conn, &uid, today).await.map_err(|e| e.1).unwrap().unwrap();
     assert_eq!(prev.segs.last().unwrap().to, Some(1440.0));
 }
+
+#[tokio::test]
+async fn admin_created_user_sets_password_and_security_questions_at_first_login() {
+    let mut admin = Client::new().await;
+    admin.login_andre().await;
+    // Direkt anlegen: Initialpasswort wird erzeugt (oder gewählt, dann geprüft); nur für Administratoren
+    let new = |extra: Value| { let mut v = json!({"name": "Neu Angelegt", "email": "angelegt@example.de", "role": "user", "week": 40, "direct": true}); v.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone()); v };
+    assert_eq!(admin.post("/api/admin/users", new(json!({"password": "zu kurz"}))).await.0, StatusCode::BAD_REQUEST);
+    let (st, r) = admin.post("/api/admin/users", new(json!({}))).await;
+    assert_eq!(st, StatusCode::OK, "{r}");
+    let temp = r["password"].as_str().unwrap().to_string();
+    assert!(tickly_api::app::password_problem(&temp, 14).is_none());
+    // Das Konto ist sofort aktiv (keine Einladung, keine Mail-Bestätigung nötig)
+    let snap = admin.get("/api/snapshot?now=872").await.1;
+    let u = snap["users"].as_array().unwrap().iter().find(|u| u["email"] == "angelegt@example.de").unwrap();
+    assert_eq!((u["status"].clone(), u["mustChangePw"].clone()), (json!("active"), json!(true)));
+    // Registrieren geht nicht mehr (Konto existiert bereits)
+    assert_eq!(admin.fresh().post("/api/auth/register", json!({"name": "X", "email": "angelegt@example.de", "password": "Ein-Langes-Passwort-42", "questions": qs()})).await.0, StatusCode::CONFLICT);
+
+    // Erste Anmeldung: gesperrt, die Oberfläche erfährt, dass auch Sicherheitsfragen fehlen
+    let mut u = admin.fresh();
+    assert_eq!(u.login("angelegt@example.de", &temp).await, StatusCode::OK);
+    let ses = u.get("/api/session").await.1;
+    assert_eq!((ses["reason"].clone(), ses["needsQuestions"].clone()), (json!("password"), json!(true)));
+    let pw = "Eigenes-Neues-Passwort-77!";
+    // Ohne gültige Fragen wird nichts geändert
+    assert_eq!(u.post("/api/me/password/required", json!({"password": pw})).await.0, StatusCode::BAD_REQUEST);
+    let same = json!([{"question": "Wie hieß dein erstes Haustier?", "answer": "Bello"}, {"question": "Wie hieß dein erstes Haustier?", "answer": "Rex"}, {"question": "Wie heißt die Straße, in der du aufgewachsen bist?", "answer": "Lindenweg"}]);
+    assert_eq!(u.post("/api/me/password/required", json!({"password": pw, "questions": same})).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(u.get("/api/session").await.1["reason"], "password", "nichts wurde geändert");
+    assert_eq!(u.post("/api/me/password/required", json!({"password": pw, "questions": qs()})).await.0, StatusCode::OK);
+    assert_eq!(u.get("/api/snapshot?now=872").await.0, StatusCode::OK);
+    assert_eq!(u.get("/api/me/security-questions").await.1["set"], true);
+    // Die Fragen funktionieren: Zurücksetzen per Antworten
+    let mut anon = admin.fresh();
+    anon.cookie = None;
+    assert_eq!(anon.post("/api/auth/reset-questions", json!({"email": "angelegt@example.de", "answers": ["bello", "lindenweg", "mäuschen"], "password": "Wieder-Ein-Neues-Passwort-88!"})).await.0, StatusCode::OK);
+
+    // Wer schon Fragen hat (Konto mit Registrierung), wird bei einem Initialpasswort nicht erneut gefragt
+    let id = register_user(&mut admin, "hat.fragen@example.de", "Ein-Langes-Passwort-42").await;
+    assert_eq!(admin.post(&format!("/api/admin/users/{id}/password"), json!({})).await.0, StatusCode::OK);
+    let tmp = admin.post(&format!("/api/admin/users/{id}/password"), json!({"password": "Vom-Admin-Gewaehlt-99!"})).await.1["password"].as_str().unwrap().to_string();
+    let mut v = admin.fresh();
+    assert_eq!(v.login("hat.fragen@example.de", &tmp).await, StatusCode::OK);
+    assert_eq!(v.get("/api/session").await.1["needsQuestions"], false);
+    assert_eq!(v.post("/api/me/password/required", json!({"password": "Mein-Neues-Passwort-55!"})).await.0, StatusCode::OK);
+    // Funktion ausgeschaltet: keine Fragen verlangt
+    assert_eq!(admin.put("/api/admin/registration", json!({"open": true, "approval": false, "domains": "", "weekly": 40, "passkeyPrompt": true, "minPw": 14, "secQuestions": false})).await.0, StatusCode::OK);
+    let (_, r2) = admin.post("/api/admin/users", new(json!({"email": "ohne@example.de"}))).await;
+    let mut w = admin.fresh();
+    assert_eq!(w.login("ohne@example.de", r2["password"].as_str().unwrap()).await, StatusCode::OK);
+    assert_eq!(w.get("/api/session").await.1["needsQuestions"], false);
+    assert_eq!(w.post("/api/me/password/required", json!({"password": "Mein-Neues-Passwort-55!"})).await.0, StatusCode::OK);
+}

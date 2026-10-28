@@ -260,7 +260,9 @@ const H = {
     const pw = $('#rs-pw').value, miss = pwChecks(pw).filter(c => !c[1]).map(c => c[0]);
     if (miss.length) return toast('Dem Passwort fehlt: ' + miss.join(', '), true);
     if (pw !== $('#rs-pw2').value) return toast('Die Passwörter stimmen nicht überein', true);
-    await api('POST', '/me/password/required', { password: pw });
+    const needQ = S.pwGate && S.pwGate.needsQuestions, questions = needQ ? readSecQ('pg') : [], qp = needQ ? secQProblem(questions) : '';
+    if (qp) return toast(qp, true);
+    await api('POST', '/me/password/required', { password: pw, questions });
     S.pwGate = null; S.ready = false; await enter();
   },
   /* Administration: Initialpasswort setzen */
@@ -471,8 +473,13 @@ const H = {
   adminFilter(el) { S.adminFilter = el.dataset.v; render(); },
   userEdit(el) { S.modal = { type: 'user', u: { ...S.users.find(u => u.id === el.dataset.id) } }; renderModalOnly(); },
   userInvite() { S.modal = { type: 'user', u: { isNew: true, name: '', email: '', role: 'user', week: S.reg.weekly } }; renderModalOnly(); },
+  inviteDirect() { S.modal.u.direct = !S.modal.u.direct; renderModalOnly(); },
   async userSave() {
     const u = S.modal.u, body = { name: u.name, email: u.email, role: u.role, week: +u.week, startBal: u.isNew ? undefined : +u.startBal };
+    if (u.isNew && u.direct) {
+      const r = await api('POST', '/admin/users', { ...body, direct: true, password: (u.pw || '').trim() || null });
+      S.modal = { type: 'adminpwDone', u: { name: u.name }, password: r.password, pwLogin: true, created: true }; renderModalOnly(); await sync(); return;
+    }
     if (u.isNew) { const r = await api('POST', '/admin/users', body); toast(r.mailed ? 'Einladung per E-Mail gesendet an ' + u.email : 'Benutzer angelegt – ohne SMTP-Server wird keine Einladung verschickt'); }
     else { await api('PUT', '/admin/users/' + u.id, body); toast('Benutzer gespeichert'); }
     closeModal(); await sync();

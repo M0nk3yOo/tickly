@@ -8,7 +8,7 @@
   - **Link per E-Mail** (nur wenn der Server E-Mail versenden kann).
   - **Sicherheitsfragen:** Bei der Registrierung wählst du drei Fragen (aus Vorschlägen wie „Wie hieß dein erstes Haustier?“ oder eigene) und gibst die Antworten an. Unter *Passwort vergessen?* → *Mit Sicherheitsfragen zurücksetzen* beantwortest du alle drei und vergibst ein neues Passwort. Groß-/Kleinschreibung, Leer- und Satzzeichen spielen keine Rolle. Danach bist du überall abgemeldet. Wähle Antworten, die nur du kennst und die man nicht im Netz findet. Nach fünf falschen Versuchen ist dieser Weg für eine Stunde gesperrt.
   - Hast du noch keine Fragen (Konto aus der Zeit davor), erinnert dich ein Hinweis; unter *Einstellungen → Sicherheit* kannst du sie jederzeit festlegen oder ändern.
-- **Initialpasswort:** Setzt ein Administrator dein Passwort neu, meldest du dich einmal damit an und musst sofort ein eigenes festlegen. Bis dahin ist nichts anderes erreichbar.
+- **Initialpasswort:** Hat ein Administrator dein Konto angelegt oder dein Passwort neu gesetzt, meldest du dich einmal damit an und musst sofort ein eigenes festlegen. Fehlen dir noch Sicherheitsfragen, wählst du sie auf derselben Seite. Bis dahin ist nichts anderes erreichbar.
 - Unter **Einstellungen → Sicherheit & Passkeys** richtest du Passkeys und die **Authenticator-App** ein, siehst deine angemeldeten Geräte (und meldest sie ab) und änderst dein Passwort. Verlangt der Administrator einen dieser Faktoren, erinnert dich ein Hinweis; nach Ablauf der Frist geht nichts anderes mehr.
 
 ![Anmeldung](screenshots/01-anmeldung.png)

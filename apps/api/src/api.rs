@@ -160,7 +160,7 @@ async fn session(State(app): St, h: HeaderMap) -> Res<Json<Value>> {
             let pw_change = u.must_change_pw && match sid_from(&h) { Some(sid) => sqlx::query_scalar::<_, bool>("SELECT pw_change FROM sessions WHERE id = $1").bind(sid).fetch_optional(&app.pool).await?.unwrap_or(false), None => false };
             // „Eingeschränkt“: Konto wartet auf Freigabe, ein Initialpasswort ist zu ändern oder die Karenzzeit für MFA ist vorbei
             let (limited, reason) = if u.status != "active" { (true, "approval") } else if pw_change { (true, "password") } else if m.expired { (true, "mfa") } else { (false, "") };
-            json!({ "loggedIn": true, "limited": limited, "reason": reason, "me": db::me_json(&u), "mfa": m.json() })
+            json!({ "loggedIn": true, "limited": limited, "reason": reason, "me": db::me_json(&u), "mfa": m.json(), "needsQuestions": pw_change && crate::secq::needs_questions(&app, &u).await? })
         }
         Err(ApiError(StatusCode::INTERNAL_SERVER_ERROR, m)) => return err(StatusCode::INTERNAL_SERVER_ERROR, m),
         Err(_) => json!({ "loggedIn": false }),
@@ -666,7 +666,8 @@ async fn admin_registration(State(app): St, h: HeaderMap, Extension(ip): Extensi
 }
 
 #[derive(Deserialize)]
-struct InviteReq { name: String, email: String, role: String, week: f64 }
+struct InviteReq { name: String, email: String, role: String, week: f64, /// Konto sofort mit Initialpasswort anlegen statt per Einladungslink
+    #[serde(default)] direct: bool, password: Option<String> }
 
 async fn admin_invite(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientIp>, Json(r): Json<InviteReq>) -> Res<Json<Value>> {
     let me = auth(&app, &h, false).await?;
@@ -675,12 +676,32 @@ async fn admin_invite(State(app): St, h: HeaderMap, Extension(ip): Extension<Cli
     if !["admin", "user"].contains(&r.role.as_str()) { return bad("Unbekannte Rolle") }
     if db::user_by_email(&app.pool, &r.email).await?.is_some() { return conflict("Diese E-Mail-Adresse ist bereits vergeben") }
     let week = r.week.clamp(1.0, 80.0);
+    // Direkt anlegen: Initialpasswort (eigenes oder erzeugtes), der Benutzer ändert es beim ersten Anmelden
+    let initial = if r.direct {
+        let min = db::reg_policy(&app.pool).await?.min_pw;
+        Some(match r.password.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
+            Some(p) => { if let Some(m) = password_problem(p, min) { return bad(m) } p.to_string() }
+            None => crate::secq::generate_password(min as usize + 4),
+        })
+    } else { None };
+    let id = db::new_user_id();
     sqlx::query("INSERT INTO users (id, name, email, role, status, webauthn_id, settings, track_start, demo, seed, demo_base) VALUES ($1,$2,$3,$4,'invited',$5,$6,$7,$8,$1,$9)")
-        .bind(db::new_user_id()).bind(r.name.trim()).bind(r.email.trim()).bind(&r.role).bind(Uuid::new_v4()).bind(SJson(if app.cfg.demo { db::weekly_settings(week) } else { db::fresh_settings(week) }))
+        .bind(&id).bind(r.name.trim()).bind(r.email.trim()).bind(&r.role).bind(Uuid::new_v4()).bind(SJson(if app.cfg.demo { db::weekly_settings(week) } else { db::fresh_settings(week) }))
         .bind(if app.cfg.demo { app.cfg.demo_track_start } else { app.clock(None).0 }).bind(app.cfg.demo).bind(demo::base_for_hours(week / 5.0))
         .execute(&app.pool).await?;
-    netsec::admin_action(&app, &me, ip, &h, &format!("Benutzer eingeladen: {} ({})", r.email.trim(), r.role)).await;
     let mailed = crate::mail::active(&app.pool).await.is_some();
+    if let Some(pw) = &initial {
+        // Der Administrator verbürgt sich für die Adresse: keine E-Mail-Bestätigung nötig
+        sqlx::query("UPDATE users SET status = 'active', password_hash = $2, must_change_pw = true, email_verified_at = now(), mfa_grace_start = now(), last_seen_at = NULL WHERE id = $1").bind(&id).bind(hash_password(pw)).execute(&app.pool).await?;
+        netsec::admin_action(&app, &me, ip, &h, &format!("Benutzer angelegt mit Initialpasswort: {} ({})", r.email.trim(), r.role)).await;
+        if mailed {
+            crate::mail::spawn(app.clone(), vec![r.email.trim().to_string()], "Dein Tickly-Konto".into(), format!("{} hat ein Konto für dich angelegt", me.name),
+                vec![format!("Hallo {}, für dich wurde ein Konto bei Tickly eingerichtet. Das Initialpasswort bekommst du von {} (es steht nicht in dieser Mail). Beim ersten Anmelden legst du ein eigenes Passwort und deine Sicherheitsfragen fest.", r.name.trim(), me.name)],
+                Some(("Zur Anmeldung".into(), format!("{}/#/login", app.cfg.public_url.as_str().trim_end_matches('/')))));
+        }
+        return Ok(Json(json!({ "ok": true, "mailed": mailed, "id": id, "password": pw })));
+    }
+    netsec::admin_action(&app, &me, ip, &h, &format!("Benutzer eingeladen: {} ({})", r.email.trim(), r.role)).await;
     if mailed {
         crate::mail::spawn(app.clone(), vec![r.email.trim().to_string()], "Einladung zu Tickly".into(), format!("{} hat dich zu Tickly eingeladen", me.name),
             vec![format!("Hallo {}, für dich wurde ein Konto bei Tickly eingerichtet. Lege mit dem Knopf unten dein Passwort fest oder richte einen Passkey ein.", r.name.trim())],
