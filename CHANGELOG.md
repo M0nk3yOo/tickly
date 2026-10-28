@@ -2,6 +2,8 @@
 
 ## 0.9.4
 
+**Releases entstehen lokal:** `scripts/release.sh` baut die Installer und das Docker-Image auf dem Entwicklungsrechner (Windows nur noch als `…-setup.exe`, kein `.msi`). Die Compose-Datei wurde dabei erstmals in einem echten Docker getestet.
+
 **macOS:** Die Companion-App wird nur noch für Apple Silicon (arm64) gebaut, Intel-Macs werden nicht mehr unterstützt (letzte Version dafür: 0.9.3). Die Datei heißt jetzt `…_aarch64.dmg`.
 
 Aktualisierung von 0.9.3: Die Datenbank wird beim Start automatisch erweitert. Konten, bei denen der Überstunden-Stand zu Beginn 0 ist, werden nach der Anmeldung einmal danach gefragt (mit „Keine Überstunden“ bestätigt man 0).

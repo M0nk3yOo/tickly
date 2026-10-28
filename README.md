@@ -95,7 +95,7 @@ Browser                   ──HTTPS──▶                                  
 
 - **Windows-Companion nicht auf Windows getestet** (aktive App, Sperrerkennung, Herunterfahren). Bitte vor dem Einsatz auf einem echten Rechner prüfen und Fehler melden.
 - **Installer sind nicht signiert** – Windows (SmartScreen) und macOS (Gatekeeper) warnen beim ersten Start. Für den Einsatz im Team Zertifikat bzw. Apple-Developer-ID einrichten.
-- **Docker-Image und Compose-Datei sind beschrieben, aber nicht in einer Docker-Umgebung gebaut/getestet** (auf dem Entwicklungsrechner war kein Docker vorhanden). Die CI baut sie beim Release.
+- **Docker:** Image und Compose-Datei sind auf einem Apple-Silicon-Mac (Colima, linux/arm64) gebaut und gestartet worden: Einrichtung, Origin-Prüfung, Healthcheck und Sicherung ins Volume funktionieren. Das Image für linux/amd64 wird mitgebaut, aber nicht auf einem amd64-Rechner gestartet. Windows (Installer) und die Verbindung zu einem echten Proxy wie Zoraxy sind nicht getestet.
 - Die Inaktivitätserkennung („Leerlauf“) ist als Einstellung vorhanden, wird aber noch nicht ausgewertet; Fenstertitel werden nie erfasst.
 - Die Weboberfläche ist Vanilla-JS; eine Umstellung auf React ist geplant.
 - Die Statistik rechnet bei jedem Aufruf alle Tage neu – gedacht für Teams und Abteilungen, nicht für tausende Benutzer.
