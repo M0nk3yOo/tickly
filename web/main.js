@@ -382,6 +382,7 @@ const H = {
     closeModal(); toast('Tracking beendet – Ende ' + hm(m.prev ? m.prev.at : S.now)); await sync();
   },
   /* Plausibilitätsprüfung nach Mitternacht */
+  async clashOk() { await api('POST', '/tracking/device/ack', {}); S.clash = null; await sync(); },
   async nightOk() { await api('POST', '/tracking/night/confirm', {}); toast('Okay – das Tracking läuft weiter'); await sync(); },
   async nightOpen() { S.modal = { type: 'night', day: 'prev', at: 1439, prev: null, err: '' }; renderModalOnly(); await H.nightPreview(); },
   async nightDay(el) { const m = S.modal; m.day = el.dataset.v; m.at = m.day === 'prev' ? 1439 : Math.max(1, Math.floor(S.now)); m.prev = null; m.err = ''; renderModalOnly(); await H.nightPreview(); },

@@ -61,6 +61,7 @@ async fn fresh_db(demo: bool) -> String {
         include_str!("../migrations/0010_track_alerts.sql").hash(&mut h);
         include_str!("../migrations/0011_start_balance.sql").hash(&mut h);
         include_str!("../migrations/0012_night_alerts.sql").hash(&mut h);
+        include_str!("../migrations/0013_device_clash.sql").hash(&mut h);
         include_str!("../migrations/0006_sessions_info.sql").hash(&mut h);
         include_str!("../migrations/0007_backup_kinds.sql").hash(&mut h);
         include_str!("../src/db.rs").hash(&mut h);
@@ -2132,4 +2133,44 @@ async fn first_admin_can_set_start_balance_during_setup() {
     assert_eq!(c.post("/api/setup", json!({"code": code, "name": "Chefin", "email": "chefin@example.de", "password": "Sehr-Langes-Passwort-42", "questions": qs(), "startBal": 12})).await.0, StatusCode::OK);
     let s = c.get("/api/snapshot").await.1;
     assert_eq!((s["startBalSet"].clone(), s["settings"]["startBal"].clone()), (json!(true), json!(12.0)));
+}
+
+#[tokio::test]
+async fn a_second_companion_starting_tracking_triggers_a_warning() {
+    let mut c = Client::real().await;
+    assert_eq!(c.login("chef@example.de", "Sehr-Langes-Passwort-42").await, StatusCode::OK);
+    async fn pair(c: &mut Client, name: &str) -> (Client, String) {
+        let code = c.post("/api/devices/pair-code", json!({})).await.1["code"].as_str().unwrap().to_string();
+        let mut dev = c.fresh();
+        dev.cookie = None;
+        let token = dev.post("/api/device/pair", json!({"code": code, "name": name, "os": "macos", "version": "1.0.0"})).await.1["token"].as_str().unwrap().to_string();
+        (dev, token)
+    }
+    let (mut a, ta) = pair(&mut c, "Büro-PC").await;
+    let (mut b, tb) = pair(&mut c, "Laptop").await;
+    let at = chrono::Utc::now().to_rfc3339();
+    let boot = |seq: i64| json!({"events": [{"seq": seq, "kind": "boot", "at": at, "os": "macos"}]});
+    let beat = |seq: i64| json!({"events": [{"seq": seq, "kind": "beat", "at": at, "os": "macos"}]});
+
+    // Das erste Gerät startet: keine Warnung
+    let start = json!({"events": [{"seq": 1, "kind": "boot", "at": at, "os": "macos"}, {"seq": 2, "kind": "answer", "answer": "work", "at": at, "os": "macos"}]});
+    let (_, r) = a.call_h(Method::POST, "/api/device/events", Some(start), Some(&ta)).await;
+    assert_eq!(r["state"]["track"], "running", "{r}");
+    assert!(r["state"]["deviceClash"].is_null(), "{r}");
+    // Das zweite Gerät meldet nur (Lebenszeichen): auch noch keine Warnung
+    let (_, r) = b.call_h(Method::POST, "/api/device/events", Some(beat(1)), Some(&tb)).await;
+    assert!(r["state"]["deviceClash"].is_null(), "{r}");
+    // Das zweite Gerät startet das Tracking, während das erste läuft: beide und die Weboberfläche werden gewarnt
+    let (_, r) = b.call_h(Method::POST, "/api/device/events", Some(boot(2)), Some(&tb)).await;
+    assert_eq!(r["state"]["deviceClash"], json!({"starter": "Laptop", "other": "Büro-PC"}), "{r}");
+    let (_, s) = a.call_h(Method::GET, "/api/device/state", None, Some(&ta)).await;
+    assert_eq!(s["deviceClash"]["starter"], "Laptop");
+    assert_eq!(c.get("/api/today").await.1["deviceClash"]["other"], "Büro-PC");
+    assert_eq!(c.get("/api/snapshot").await.1["deviceClash"]["starter"], "Laptop");
+
+    // Bestätigt: die Warnung verschwindet
+    assert_eq!(c.post("/api/tracking/device/ack", json!({})).await.0, StatusCode::OK);
+    assert!(c.get("/api/today").await.1["deviceClash"].is_null());
+    let (_, s) = b.call_h(Method::GET, "/api/device/state", None, Some(&tb)).await;
+    assert!(s["deviceClash"].is_null());
 }

@@ -85,6 +85,17 @@ pub struct ServerState {
     pub mfa: Option<MfaInfo>,
     /// Das Tracking läuft über Nacht und passt nicht zu den bisherigen Zeiten: der Benutzer soll es prüfen.
     pub night_check: Option<NightInfo>,
+    /// Ein zweiter Companion hat das Tracking gestartet, während dieser lief (oder umgekehrt).
+    pub device_clash: Option<ClashInfo>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ClashInfo {
+    /// Name des Geräts, das gestartet hat
+    pub starter: String,
+    /// Name des Geräts, das schon lief
+    pub other: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]

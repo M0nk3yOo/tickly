@@ -10,7 +10,7 @@ use axum::{
     http::{header, HeaderMap, StatusCode},
     Json,
 };
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Duration, NaiveDate, Utc};
 use rand::{distributions::Slice, Rng, RngCore};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -22,6 +22,23 @@ use uuid::Uuid;
 
 const CODE_ALPHABET: &[u8] = b"ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const MAX_BATCH: usize = 200;
+/// So lange gilt ein Companion als aktiv, nachdem er zuletzt Ereignisse gemeldet hat (er meldet alle 30 Sekunden).
+const CLASH_LIVE_SECS: f64 = 90.0;
+
+/// Zwei Companions melden gleichzeitig, und der zweite hat das Tracking gestartet: wer startete, wer lief schon.
+/// Die Warnung endet mit der Bestätigung oder sobald einer der beiden nicht mehr meldet.
+pub async fn clash(app: &App, uid: &str, today: NaiveDate) -> Res<Option<Value>> {
+    let r: Option<(String, String)> = sqlx::query_as("SELECT s.name, f.name FROM device_clash c JOIN devices f ON f.id = c.first JOIN devices s ON s.id = c.second
+        WHERE c.user_id = $1 AND c.day = $2 AND NOT c.ack AND f.revoked_at IS NULL AND s.revoked_at IS NULL
+        AND f.last_event_at > now() - make_interval(secs => $3) AND s.last_event_at > now() - make_interval(secs => $3)")
+        .bind(uid).bind(today).bind(CLASH_LIVE_SECS).fetch_optional(&app.pool).await?;
+    Ok(r.map(|(starter, other)| json!({ "starter": starter, "other": other })))
+}
+
+pub async fn clash_ack(app: &App, uid: &str) -> Res<()> {
+    sqlx::query("UPDATE device_clash SET ack = true WHERE user_id = $1").bind(uid).execute(&app.pool).await?;
+    Ok(())
+}
 
 #[derive(FromRow)]
 pub struct DeviceRow {
@@ -139,12 +156,27 @@ pub async fn device_events(State(app): St, h: HeaderMap, Json(r): Json<EventsReq
     let abs = db::absences(&app.pool, &u.id).await?;
     let mut last = dev.last_seq;
     let mut results = Vec::new();
+    // Startet dieses Gerät das Tracking, während schon ein anderes Gerät meldet und der Tag läuft: Warnung
+    let (today, _) = app.clock(None);
+    let mut rival: Option<Uuid> = None;
+    if r.events.iter().any(|e| matches!(e.ev.kind.as_str(), "boot" | "start" | "answer")) {
+        let others: Vec<(Uuid,)> = sqlx::query_as("SELECT id FROM devices WHERE user_id = $1 AND id <> $2 AND revoked_at IS NULL AND last_event_at > now() - make_interval(secs => $3) ORDER BY last_event_at DESC")
+            .bind(&u.id).bind(dev.id).bind(CLASH_LIVE_SECS).fetch_all(&app.pool).await?;
+        if let Some((o,)) = others.first() {
+            let mut c = app.pool.acquire().await?;
+            if db::get_day(&mut c, &u.id, today).await?.is_some_and(|d| d.tracking) { rival = Some(*o); }
+        }
+    }
+    let mut started = false;
     for e in r.events {
         if e.seq <= last { results.push(json!({ "seq": e.seq, "ok": true, "duplicate": true })); continue }
         let mut tx = app.pool.begin().await?;
         let res = events::apply(&app, &mut tx, &u, &abs, &e.ev).await;
         match res {
-            Ok(Ok(())) => { tx.commit().await?; results.push(json!({ "seq": e.seq, "ok": true })); }
+            Ok(Ok(())) => {
+                started |= matches!(e.ev.kind.as_str(), "boot" | "start" | "answer");
+                tx.commit().await?; results.push(json!({ "seq": e.seq, "ok": true }));
+            }
             // passt nicht zum Zustand oder zu alt: nicht wiederholen, aber nicht blockieren
             Ok(Err(m)) => { tx.rollback().await?; results.push(json!({ "seq": e.seq, "ok": false, "error": m })); }
             Err(ApiError(c, m)) if c == StatusCode::BAD_REQUEST => { tx.rollback().await?; results.push(json!({ "seq": e.seq, "ok": false, "error": m })); }
@@ -152,7 +184,11 @@ pub async fn device_events(State(app): St, h: HeaderMap, Json(r): Json<EventsReq
         }
         last = e.seq;
     }
-    sqlx::query("UPDATE devices SET last_seq = $2, last_seen_at = now() WHERE id = $1").bind(dev.id).bind(last).execute(&app.pool).await?;
+    sqlx::query("UPDATE devices SET last_seq = $2, last_seen_at = now(), last_event_at = now() WHERE id = $1").bind(dev.id).bind(last).execute(&app.pool).await?;
+    if let (true, Some(first)) = (started, rival) {
+        sqlx::query("INSERT INTO device_clash (user_id, day, first, second) VALUES ($1, $2, $3, $4) ON CONFLICT (user_id) DO UPDATE SET day = $2, first = $3, second = $4, at = now(), ack = false")
+            .bind(&u.id).bind(today).bind(first).bind(dev.id).execute(&app.pool).await?;
+    }
     let state = state_json(&app, &u, last).await?;
     Ok(Json(json!({ "ok": true, "lastSeq": last, "results": results, "state": state })))
 }
@@ -171,6 +207,7 @@ async fn state_json(app: &App, u: &UserRow, last_seq: i64) -> Res<Value> {
     let (has_day, tz) = (c.has_day, app.cfg.tz.name());
     let mfa = db::mfa_status(&app.pool, u, &db::reg_policy(&app.pool).await?).await?.json();
     let p = track_policy(&c.settings, &ap, today, now);
+    let clash = clash(app, &u.id, today).await?;
     Ok(c.with(|c| {
         let t = day_stat(c, c.today);
         let d = c.day;
@@ -188,6 +225,7 @@ async fn state_json(app: &App, u: &UserRow, last_seq: i64) -> Res<Value> {
             "balance": total_balance(c),
             "windowActive": p.auto_from.is_some(),
             "nightCheck": night_check(c).map(|n| json!({ "since": n.since, "hours": n.hours })),
+            "deviceClash": clash.filter(|_| d.tracking),
             "policy": { "trackApps": s.track_apps, "trackLock": s.track_lock, "trackTitles": s.track_titles, "excluded": s.excluded, "idle": s.idle, "autostart": s.autostart, "autoTrack": s.auto_track },
         })
     }))

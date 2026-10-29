@@ -1,5 +1,12 @@
 # Änderungen
 
+## Unveröffentlicht
+
+Aktualisierung von 0.9.6: Die Datenbank wird beim Start automatisch angepasst (Migration 0013).
+
+- **Pause und Beenden im Web erreichen den Companion:** Der Companion holt den Zustand vom Server nun alle 4 Sekunden (statt nur mit dem Lebenszeichen alle 30 Sekunden), sobald nichts zu senden ist. Wird im Web pausiert oder beendet, zeigt ein laufender Companion das nach wenigen Sekunden ebenfalls.
+- **Warnung bei zwei Companions:** Startet ein zweiter Companion das Tracking, während ein anderer desselben Benutzers noch meldet, erscheint eine Warnung in der Weboberfläche und in beiden Companions („Tracking läuft auf zwei Geräten“), bis einer endet oder sie mit **Verstanden** bestätigt wird. Es wird nichts blockiert.
+
 ## 0.9.6
 
 Aktualisierung von 0.9.5: Die Datenbank wird beim Start automatisch angepasst (Migration 0012).

@@ -243,6 +243,12 @@ function nightBanner() {
   if (!n || !S.day.tracking) return '';
   return `<div class="callout warn" style="margin-top:14px">${ic('day')}<div class="grow"><b>Läuft dein Tracking noch?</b> Es läuft seit gestern <b>${hm(n.since)} Uhr</b> ohne Unterbrechung, inzwischen <b>${durN(n.hours * 60)} Stunden</b>. Das passt nicht zu deinen bisherigen Zeiten. Hast du vergessen, es zu beenden?</div><button class="btn sm primary" data-a="nightOpen">Ende festlegen …</button><button class="btn sm" data-a="nightOk" title="Die Zeit zählt weiter, du wirst heute nicht mehr gefragt">Ich arbeite wirklich</button></div>`;
 }
+/** Zwei Companions melden gleichzeitig, und der zweite hat das Tracking gestartet */
+function clashBanner() {
+  const c = S.clash;
+  if (!c || !S.day.tracking) return '';
+  return `<div class="callout warn" style="margin-top:14px">${ic('day')}<div class="grow"><b>Tracking läuft auf zwei Geräten</b> Auf <b>${esc(c.starter)}</b> wurde das Tracking gestartet, während <b>${esc(c.other)}</b> noch lief. Beide melden Zeiten und Apps für denselben Tag und verfälschen sich gegenseitig. Beende den Companion auf einem der Geräte.</div><button class="btn sm" data-a="clashOk" title="Die Warnung verschwindet; sie kommt erst bei einem neuen Start wieder">Verstanden</button></div>`;
+}
 function nightSummary(m) {
   if (m.err) return `<div class="callout warn">${ic('info')}<span>${esc(m.err)}</span></div>`;
   const p = m.prev; if (!p) return `<p class="muted sm">Berechne …</p>`;
@@ -376,7 +382,7 @@ function vDashboard() {
   const trkBadge = `<span class="badge ${trkTone(ts)}"><span class="dot ${ts.cls}"></span>${ts.label}</span>`;
   const first = S.me.name.split(' ')[0];
   let msg;
-  const noWork = !S.day.segs.length, dayEnded = dayClosed(), longTrack = nightBanner() || longTrackBanner(t, ts), st0 = t.start != null ? t.start : S.now - 30;
+  const noWork = !S.day.segs.length, dayEnded = dayClosed(), longTrack = clashBanner() + (nightBanner() || longTrackBanner(t, ts)), st0 = t.start != null ? t.start : S.now - 30;
   if (ts.key === 'ask') msg = `Der Rechner läuft seit <b>${hm(S.day.start)}</b>, aber das Tracking wurde noch nicht gestartet.`;
   else if (noWork) msg = `Heute wird noch nicht getrackt. Starte das Tracking im Companion, hier im Web oder lege Zeitfenster für den automatischen Start fest.`;
   else if (ts.key === 'paused') msg = `Das Tracking ist seit <b>${hm(S.day.ended)}</b> gestoppt. Die Pause wird nicht gezählt – der Tag bleibt offen.`;

@@ -51,6 +51,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/companion", post(companion))
         .route("/tracking/stop-preview", post(stop_preview))
         .route("/tracking/night/confirm", post(night_confirm))
+        .route("/tracking/device/ack", post(clash_ack))
         .route("/tracking/night/stop", post(night_stop))
         .route("/devices/pair-code", post(device::pair_code))
         .route("/devices/{id}", delete(device::revoke))
@@ -462,6 +463,7 @@ fn apps_json(c: &Ctx) -> Value {
 
 async fn snapshot_json(app: &App, u: &UserRow, today: NaiveDate, now: f64) -> Res<Value> {
     let calc = Calc::load(app, u, today, now).await?;
+    let clash = device::clash(app, &u.id, today).await?;
     let year = today.year();
     let (first, last) = (NaiveDate::from_ymd_opt(u.track_start.year().min(year), 1, 1).unwrap(), NaiveDate::from_ymd_opt(year + 1, 12, 31).unwrap());
     let abs: Vec<Value> = calc.absences.iter().map(|a| {
@@ -483,7 +485,7 @@ async fn snapshot_json(app: &App, u: &UserRow, today: NaiveDate, now: f64) -> Re
                 "id": k.id, "name": k.name, "created": fmt_de(app.local(k.created_at).0),
                 "last": k.last_used_at.map(|t| db::ago_label(t, now_utc)).unwrap_or_else(|| "noch nie".into()),
             })).collect::<Vec<_>>(),
-            "day": c.day, "nightCheck": night_check(c).as_ref().map(night_json), "days": days, "forecastEnd": forecast_end(c, &t), "apps": apps_json(c),
+            "day": c.day, "nightCheck": night_check(c).as_ref().map(night_json), "deviceClash": clash.clone().filter(|_| c.day.tracking), "days": days, "forecastEnd": forecast_end(c, &t), "apps": apps_json(c),
             "vacation": vacation_summary(c, 30), "nextHolidays": next_holidays(c, 3),
             "holidays": year_holidays(year, c.settings),
         })
@@ -543,9 +545,10 @@ async fn today(State(app): St, h: HeaderMap, Query(q): Query<NowQ>) -> Res<Json<
     let (today, now) = app.clock(q.now);
     demo_ensure_day(&app, &u, now).await?;
     let calc = Calc::load(&app, &u, today, now).await?;
+    let clash = device::clash(&app, &u.id, today).await?;
     Ok(Json(calc.with(|c| {
         let t = day_stat(c, c.today);
-        json!({ "day": c.day, "today": t, "date": today, "now": now, "forecastEnd": forecast_end(c, &t), "nightCheck": night_check(c).as_ref().map(night_json) })
+        json!({ "day": c.day, "today": t, "date": today, "now": now, "forecastEnd": forecast_end(c, &t), "nightCheck": night_check(c).as_ref().map(night_json), "deviceClash": clash.filter(|_| c.day.tracking) })
     })))
 }
 
@@ -659,6 +662,13 @@ struct NightStop { /// Minuten seit Mitternacht des Vortags (über 1440 = nach M
     at: f64, #[serde(default)] preview: bool }
 
 fn night_json(c: &tickly_core::NightCheck) -> Value { json!({ "since": c.since, "hours": c.hours, "yesterday": c.yesterday }) }
+
+/// Die Warnung zu zwei gleichzeitigen Companions bestätigen.
+async fn clash_ack(State(app): St, h: HeaderMap) -> Res<Json<Value>> {
+    let u = auth(&app, &h, false).await?;
+    device::clash_ack(&app, &u.id).await?;
+    Ok(Json(json!({ "ok": true })))
+}
 
 /// „Ich arbeite wirklich“: die Rückfrage zum Tracking über Nacht entfällt.
 async fn night_confirm(State(app): St, h: HeaderMap) -> Res<Json<Value>> {

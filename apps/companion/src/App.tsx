@@ -138,6 +138,15 @@ function Main({ s, set }: { s: UiState; set: (s: UiState) => void }) {
             <button className="btn sm" onClick={() => api.dashboard()}>Weboberfläche öffnen</button>
           </div>
         )}
+        {st?.deviceClash && running && (
+          <div className="callout warn">
+            <b>Tracking läuft auf zwei Geräten</b>
+            <span>
+              Auf „{st.deviceClash.starter}“ wurde das Tracking gestartet, während „{st.deviceClash.other}“ noch lief. Beide melden Zeiten und Apps für denselben Tag und verfälschen sich gegenseitig. Beende den Companion auf einem der Geräte.
+            </span>
+            <button className="btn sm" onClick={() => api.dashboard()}>Weboberfläche öffnen</button>
+          </div>
+        )}
         {track === "asking" && (
           <div className="ask">
             <h2>Arbeitest du gerade?</h2>

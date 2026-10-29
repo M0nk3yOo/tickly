@@ -15,6 +15,8 @@ use tickly_platform::{Platform, SysEvent};
 
 /// Abstand der Lebenszeichen. Daraus ergibt sich bei einem Absturz das Ende der Zeiterfassung.
 const BEAT_EVERY: i64 = 30;
+/// So oft holt der Companion den Zustand vom Server, wenn nichts zu senden ist
+const SYNC_EVERY: i64 = 4;
 /// Größerer Sprung der Uhr zwischen zwei Messungen: der Rechner war im Ruhezustand.
 const SLEEP_GAP: i64 = 90;
 const BATCH: usize = 100;
@@ -73,6 +75,8 @@ pub struct Engine<T: Transport> {
     last_app_sent: Option<String>,
     last_tick: Option<DateTime<Utc>>,
     last_beat: Option<DateTime<Utc>>,
+    /// Wann zuletzt der Zustand vom Server kam
+    last_sync: Option<DateTime<Utc>>,
     retry_at: Option<DateTime<Utc>>,
     clock: DateTime<Utc>,
     backoff: i64,
@@ -83,7 +87,7 @@ impl<T: Transport> Engine<T> {
     pub fn new(platform: Box<dyn Platform>, transport: T, outbox: Outbox) -> Engine<T> {
         Engine {
             platform, transport, outbox, store: None, state: ServerState::default(), date: None, day: None, connected: false,
-            unauthorized: false, error: None, locked: false, app: None, last_app_sent: None, last_tick: None, last_beat: None, retry_at: None,
+            unauthorized: false, error: None, locked: false, app: None, last_app_sent: None, last_tick: None, last_beat: None, last_sync: None, retry_at: None,
             clock: Utc::now(), backoff: 2, finished: false,
         }
     }
@@ -216,6 +220,25 @@ impl<T: Transport> Engine<T> {
             self.last_beat = Some(now);
         }
         self.flush(now, false);
+        self.follow_server(now);
+    }
+
+    /// Pausiert oder beendet die Weboberfläche das Tracking (oder startet ein anderes Gerät), soll der Companion das bald
+    /// übernehmen und nicht erst mit dem nächsten Lebenszeichen: ist nichts mehr zu senden, wird der Zustand regelmäßig abgeholt.
+    fn follow_server(&mut self, now: DateTime<Utc>) {
+        if !self.outbox.is_empty() || self.unauthorized || self.retry_at.is_some_and(|t| now < t) {
+            return;
+        }
+        if self.last_sync.is_some_and(|t| now - t < Cd::seconds(SYNC_EVERY)) {
+            return;
+        }
+        match self.transport.state(Duration::from_secs(5)) {
+            Ok(s) => {
+                self.error = None;
+                self.set_state(s, true);
+            }
+            Err(e) => self.on_error(now, e),
+        }
     }
 
     /// Benutzeraktion aus der Oberfläche (wirkt sofort, auch ohne Verbindung).
@@ -327,6 +350,7 @@ impl<T: Transport> Engine<T> {
 
     fn set_state(&mut self, s: ServerState, adopt_day: bool) {
         self.connected = true;
+        self.last_sync = Some(self.clock);
         if adopt_day {
             if let Some(d) = &s.day {
                 self.day = Some(d.clone());
@@ -696,6 +720,35 @@ mod tests {
         assert!(server_day.segs.iter().any(|g| g.app.as_deref() == Some("Teams")));
         assert!(server_day.segs.iter().any(|g| g.kind == tickly_core::SegKind::Locked));
         assert_eq!(server_day.stop, None);
+    }
+
+    #[test]
+    fn pause_or_stop_in_the_web_reaches_the_running_companion_within_seconds() {
+        let world = replay_world(false, true);
+        let (_pcs, platform) = pc("Code");
+        let mut e = Engine::new(platform, ReplayServer(world.clone()), Outbox::in_memory());
+        e.start(afternoon(0), true);
+        e.action(afternoon(1), Action::Resume);
+        e.tick(afternoon(2));
+        assert_eq!(e.view().state.track, "running");
+
+        // Pause in der Weboberfläche: wirkt direkt beim Server
+        let now = |s: i64| { let l = afternoon(s).with_timezone(&chrono_tz::Europe::Berlin); l.num_seconds_from_midnight() as f64 / 60.0 };
+        e.tick(afternoon(9));
+        world.lock().unwrap().day.as_mut().unwrap().pause(now(10)).unwrap();
+        e.tick(afternoon(11));
+        assert_eq!(e.view().state.track, "running", "noch nicht abgefragt");
+        e.tick(afternoon(14));
+        assert_eq!(e.view().state.track, "paused", "nach wenigen Sekunden übernommen");
+
+        // Weiter im Web, dann Beenden im Web
+        world.lock().unwrap().day.as_mut().unwrap().web_start(now(20)).unwrap();
+        e.tick(afternoon(20));
+        assert_eq!(e.view().state.track, "running");
+        world.lock().unwrap().day.as_mut().unwrap().stop_web(now(30), now(30)).unwrap();
+        e.tick(afternoon(25));
+        assert_eq!(e.view().state.track, "stopped");
+        assert_eq!(e.view().pending, 0);
     }
 
     #[test]

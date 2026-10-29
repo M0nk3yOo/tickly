@@ -37,6 +37,11 @@ Läuft das Tracking über Mitternacht weiter, prüft Tickly nach einer Stunde (a
 - **Ich arbeite wirklich**: Die Zeit zählt weiter, und du wirst in dieser Nacht nicht mehr gefragt.
 
 Bis du antwortest, läuft die Zeit weiter. Nichts wird von selbst beendet.
+
+### Companion und Weboberfläche zusammen
+
+- **Pausieren und Beenden im Web** gilt auch für einen laufenden Companion: Er holt den Zustand alle paar Sekunden vom Server und zeigt danach ebenfalls „Pausiert“ bzw. „Beendet“. Fortsetzen geht wie sonst im Companion oder im Web.
+- **Zwei Companions:** Startet ein zweiter Companion (zum Beispiel auf dem Laptop) das Tracking, während ein anderer (zum Beispiel im Büro) noch Ereignisse meldet, warnt Tickly in der Weboberfläche und in beiden Companions: „Tracking läuft auf zwei Geräten“. Beide melden dann Zeiten und Apps für denselben Tag. Beende den Companion auf einem der Geräte. Die Warnung verschwindet dann von selbst oder mit **Verstanden**. Es wird nichts blockiert.
 - Mit **Ende festlegen** korrigierst du das Ende, wenn du es vergessen hast.
 - Der heutige Tag erzeugt erst Minus, wenn er beendet ist.
 
