@@ -1,6 +1,6 @@
 # Änderungen
 
-## Unveröffentlicht
+## 0.9.6
 
 Aktualisierung von 0.9.5: Die Datenbank wird beim Start automatisch angepasst (Migration 0012).
 

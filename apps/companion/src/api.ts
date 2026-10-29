@@ -53,7 +53,7 @@ const mock: { s: UiState } = {
     server: "https://zeit.example.com",
     deviceName: "DESKTOP-ANDRE",
     userName: "André Becker",
-    version: "0.9.5",
+    version: "0.9.6",
     os: "windows",
     view: {
       connected: new URLSearchParams(location.search).get("offline") !== "1", unauthorized: false, error: null, pending: new URLSearchParams(location.search).get("offline") === "1" ? 14 : 0, estimated: new URLSearchParams(location.search).get("offline") === "1", locked: false, app: "VS Code", asOf: Date.now(),
