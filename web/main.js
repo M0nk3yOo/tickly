@@ -381,6 +381,22 @@ const H = {
     if (m.mode === 'custom') await api('POST', '/companion', { kind: 'stopat', until: m.at, now: nowQ() }); else await api('POST', '/companion', { kind: 'stop', now: nowQ() });
     closeModal(); toast('Tracking beendet – Ende ' + hm(m.prev ? m.prev.at : S.now)); await sync();
   },
+  /* Plausibilitätsprüfung nach Mitternacht */
+  async nightOk() { await api('POST', '/tracking/night/confirm', {}); toast('Okay – das Tracking läuft weiter'); await sync(); },
+  async nightOpen() { S.modal = { type: 'night', day: 'prev', at: 1439, prev: null, err: '' }; renderModalOnly(); await H.nightPreview(); },
+  async nightDay(el) { const m = S.modal; m.day = el.dataset.v; m.at = m.day === 'prev' ? 1439 : Math.max(1, Math.floor(S.now)); m.prev = null; m.err = ''; renderModalOnly(); await H.nightPreview(); },
+  async nightPreview() {
+    const m = S.modal; if (!m || m.type !== 'night') return;
+    const at = m.at + (m.day === 'prev' ? 0 : 1440), day = m.day;
+    try { const r = await api('POST', '/tracking/night/stop', { at, preview: true }); if (S.modal === m && m.day === day && m.at + (day === 'prev' ? 0 : 1440) === at) { m.prev = r; m.err = ''; } }
+    catch (e) { if (S.modal === m && m.day === day) { m.prev = null; m.err = e.message; } }
+    renderModalOnly();
+  },
+  async nightDo() {
+    const m = S.modal;
+    await api('POST', '/tracking/night/stop', { at: m.at + (m.day === 'prev' ? 0 : 1440) });
+    closeModal(); toast('Tracking beendet – Ende ' + hm(m.prev ? m.prev.at : m.at)); await reload();
+  },
   async cAnswer(el) {
     await api('POST', '/companion', { kind: 'answer', answer: el.dataset.v, now: nowQ() });
     toast(el.dataset.v === 'no' ? 'Okay – das Tracking bleibt aus' : 'Tracking gestartet'); await sync();
@@ -504,6 +520,7 @@ const H = {
 };
 async function afterChange(path) {
   // Erst nach der Antwort neu zeichnen (nicht im Ereignis des Eingabefelds, das gerade den Fokus verliert)
+  if (path === 'modal.nat') { if (S.modal) { S.modal.prev = null; S.modal.err = ''; } return H.nightPreview(); }
   if (path === 'modal.at') { if (S.modal) { S.modal.prev = null; S.modal.err = ''; } return H.stopPreview(); }
   if (path.startsWith('set.')) return saveSet();
   if (path.startsWith('reg.')) return saveReg();

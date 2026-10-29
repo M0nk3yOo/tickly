@@ -83,6 +83,16 @@ pub struct ServerState {
     /// Der Tageszustand laut Server (fehlt, solange heute nichts gemeldet wurde).
     pub day: Option<DayState>,
     pub mfa: Option<MfaInfo>,
+    /// Das Tracking läuft über Nacht und passt nicht zu den bisherigen Zeiten: der Benutzer soll es prüfen.
+    pub night_check: Option<NightInfo>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct NightInfo {
+    /// Seit wann es ohne Unterbrechung läuft (Minuten seit Mitternacht des Vortags)
+    pub since: f64,
+    pub hours: f64,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

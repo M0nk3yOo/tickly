@@ -60,6 +60,7 @@ async fn fresh_db(demo: bool) -> String {
         include_str!("../migrations/0009_security_questions.sql").hash(&mut h);
         include_str!("../migrations/0010_track_alerts.sql").hash(&mut h);
         include_str!("../migrations/0011_start_balance.sql").hash(&mut h);
+        include_str!("../migrations/0012_night_alerts.sql").hash(&mut h);
         include_str!("../migrations/0006_sessions_info.sql").hash(&mut h);
         include_str!("../migrations/0007_backup_kinds.sql").hash(&mut h);
         include_str!("../src/db.rs").hash(&mut h);
@@ -1892,6 +1893,81 @@ async fn long_tracking_mail_and_midnight_carry_over() {
     assert!(next.tracking && next.segs[0].from == 0.0);
     let prev = db::get_day(&mut conn, &uid, today).await.map_err(|e| e.1).unwrap().unwrap();
     assert_eq!(prev.segs.last().unwrap().to, Some(1440.0));
+}
+
+#[tokio::test]
+async fn overnight_tracking_asks_once_and_can_be_confirmed_or_stopped() {
+    let (port, inbox) = fake_smtp().await;
+    let mut c = Client::real().await;
+    assert_eq!(c.login("chef@example.de", "Sehr-Langes-Passwort-42").await, StatusCode::OK);
+    assert_eq!(smtp_settings(&mut c, port, true).await, StatusCode::OK);
+    let app = c.app.clone();
+    let (today, _) = app.clock(None);
+    let yesterday = today - chrono::Duration::days(1);
+    let uid = c.get("/api/session").await.1["me"]["id"].as_str().unwrap().to_string();
+    // Gestern ab 14:00 gestartet, über Mitternacht weitergelaufen
+    let seed = |nights: i64| {
+        let (app, uid) = (app.clone(), uid.clone());
+        async move {
+            let mut conn = app.pool.acquire().await.unwrap();
+            sqlx::query("DELETE FROM days WHERE user_id = $1").bind(&uid).execute(&mut *conn).await.unwrap();
+            sqlx::query("DELETE FROM track_alerts").execute(&mut *conn).await.unwrap();
+            let mut y = tickly_core::DayState::empty(840.0);
+            y.web_start(840.0).unwrap();
+            let t = y.continued("Web");
+            y.close_at_midnight();
+            db::put_day(&mut conn, &uid, yesterday, &y).await.map_err(|e| e.1).unwrap();
+            db::put_day(&mut conn, &uid, today, &t).await.map_err(|e| e.1).unwrap();
+            // frühere Nächte, in denen bis 03:00 gearbeitet wurde
+            for k in 0..nights {
+                let mut n = tickly_core::DayState::empty(0.0);
+                n.web_start(0.0).unwrap();
+                n.stop_web(180.0, 180.0).unwrap();
+                db::put_day(&mut conn, &uid, today - chrono::Duration::days(2 + k), &n).await.map_err(|e| e.1).unwrap();
+            }
+        }
+    };
+    seed(0).await;
+    // Kurz nach Mitternacht (Schonfrist) wird nicht gefragt, später genau einmal – mit Mail
+    assert_eq!(tickly_api::tracking::tick_at(&app, today, 30.0).await.unwrap(), 0);
+    assert_eq!(tickly_api::tracking::tick_at(&app, today, 120.0).await.unwrap(), 1);
+    assert_eq!(tickly_api::tracking::tick_at(&app, today, 150.0).await.unwrap(), 0, "höchstens einmal je Nacht");
+    let m = &wait_mails(&inbox, 1).await[0];
+    assert!(m.contains("Läuft dein Tracking noch?") && m.contains("14:00") && m.contains("#/dashboard"), "{}", &m[..m.len().min(1200)]);
+    // Die Vorschau zeigt den Vortag mit dem gewünschten Ende und ändert nichts
+    let (st, p) = c.post("/api/tracking/night/stop", json!({"at": 1230, "preview": true})).await;
+    assert_eq!(st, StatusCode::OK, "{p}");
+    assert_eq!((p["date"].clone(), p["start"].as_f64(), p["at"].as_f64(), p["gross"].as_f64()), (json!(yesterday), Some(840.0), Some(1230.0), Some(390.0)), "{p}");
+    {
+        let mut conn = app.pool.acquire().await.unwrap();
+        assert!(db::get_day(&mut conn, &uid, today).await.map_err(|e| e.1).unwrap().unwrap().tracking);
+    }
+    // Ein Ende vor dem Arbeitsbeginn oder in der Zukunft wird abgelehnt
+    assert_eq!(c.post("/api/tracking/night/stop", json!({"at": 600, "preview": true})).await.0, StatusCode::CONFLICT);
+    assert_eq!(c.post("/api/tracking/night/stop", json!({"at": 2879, "preview": true})).await.0, StatusCode::CONFLICT);
+    // „Ich arbeite wirklich“: keine Rückfrage mehr
+    assert_eq!(c.post("/api/tracking/night/confirm", json!({})).await.0, StatusCode::OK);
+    assert!(db::get_day(&mut app.pool.acquire().await.unwrap(), &uid, today).await.map_err(|e| e.1).unwrap().unwrap().night_ok);
+    sqlx::query("DELETE FROM track_alerts").execute(&app.pool).await.unwrap();
+    assert_eq!(tickly_api::tracking::tick_at(&app, today, 200.0).await.unwrap(), 0, "bestätigt");
+
+    // Zur gewohnten Nachtarbeit (drei frühere Nächte bis 03:00) wird nicht gefragt, darüber hinaus schon
+    seed(3).await;
+    assert_eq!(tickly_api::tracking::tick_at(&app, today, 120.0).await.unwrap(), 0, "passt ins Muster");
+    assert_eq!(tickly_api::tracking::tick_at(&app, today, 240.0).await.unwrap(), 1, "länger als sonst");
+
+    // Beenden mit Ende am Vortag: dort wird geschnitten, heute bleibt nichts übrig
+    seed(0).await;
+    let (st, r) = c.post("/api/tracking/night/stop", json!({"at": 1230})).await;
+    assert_eq!(st, StatusCode::OK, "{r}");
+    let mut conn = app.pool.acquire().await.unwrap();
+    let y = db::get_day(&mut conn, &uid, yesterday).await.map_err(|e| e.1).unwrap().unwrap();
+    assert!(!y.tracking && y.ended == Some(1230.0) && y.segs.iter().all(|g| g.to.unwrap() <= 1230.0), "{y:?}");
+    let t = db::get_day(&mut conn, &uid, today).await.map_err(|e| e.1).unwrap().unwrap();
+    assert!(!t.tracking && t.segs.is_empty() && !t.carried, "{t:?}");
+    drop(conn);
+    assert_eq!(tickly_api::tracking::tick_at(&app, today, 300.0).await.unwrap(), 0);
+    assert_eq!(c.post("/api/tracking/night/stop", json!({"at": 1230})).await.0, StatusCode::CONFLICT, "läuft nichts mehr");
 }
 
 #[tokio::test]

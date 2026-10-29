@@ -129,6 +129,15 @@ function Main({ s, set }: { s: UiState; set: (s: UiState) => void }) {
             <button className="btn sm" onClick={() => api.dashboard()}>Weboberfläche öffnen</button>
           </div>
         )}
+        {st?.nightCheck && running && (
+          <div className="callout warn">
+            <b>Läuft dein Tracking noch?</b>
+            <span>
+              Es läuft seit gestern {clock(st.nightCheck.since)} Uhr ohne Unterbrechung ({hm(st.nightCheck.hours * 60)} Stunden) und passt nicht zu deinen bisherigen Zeiten. Beende es in der Weboberfläche mit dem Zeitpunkt, an dem du wirklich aufgehört hast, oder bestätige dort, dass du arbeitest.
+            </span>
+            <button className="btn sm" onClick={() => api.dashboard()}>Weboberfläche öffnen</button>
+          </div>
+        )}
         {track === "asking" && (
           <div className="ask">
             <h2>Arbeitest du gerade?</h2>

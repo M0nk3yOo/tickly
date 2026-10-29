@@ -16,7 +16,7 @@ async function refreshToday() {
   const t = await api('GET', '/today?now=' + nowQ());
   if (t.date && t.date !== TODAY) { S.dateChanged = true; return; }
   if (!S.demo && t.now != null) S.now = t.now;
-  S.day = t.day; DB.days[TODAY] = t.today; DB.forecastEnd = t.forecastEnd;
+  S.day = t.day; S.night = t.nightCheck || null; DB.days[TODAY] = t.today; DB.forecastEnd = t.forecastEnd;
 }
 
 /* ---------- WebAuthn ---------- */

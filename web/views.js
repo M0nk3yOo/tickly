@@ -237,6 +237,19 @@ function longTrackBanner(t, ts) {
   if (!h || !S.day.tracking || t.gross < h * 60) return '';
   return `<div class="callout warn" style="margin-top:14px">${ic('day')}<div class="grow"><b>Läuft dein Tracking noch?</b> Es läuft schon seit <b>${durN(t.gross)} Stunden</b> (Brutto, seit ${t.start != null ? hm(t.start) : '–'}). Hast du vergessen, es zu beenden?</div><button class="btn sm primary" data-a="stopOpen" data-m="now">Jetzt beenden</button><button class="btn sm" data-a="stopOpen" data-m="custom">Ende festlegen …</button></div>`;
 }
+/** Plausibilitätsprüfung: das Tracking läuft über Nacht und passt nicht zu den bisherigen Zeiten */
+function nightBanner() {
+  const n = S.night;
+  if (!n || !S.day.tracking) return '';
+  return `<div class="callout warn" style="margin-top:14px">${ic('day')}<div class="grow"><b>Läuft dein Tracking noch?</b> Es läuft seit gestern <b>${hm(n.since)} Uhr</b> ohne Unterbrechung, inzwischen <b>${durN(n.hours * 60)} Stunden</b>. Das passt nicht zu deinen bisherigen Zeiten. Hast du vergessen, es zu beenden?</div><button class="btn sm primary" data-a="nightOpen">Ende festlegen …</button><button class="btn sm" data-a="nightOk" title="Die Zeit zählt weiter, du wirst heute nicht mehr gefragt">Ich arbeite wirklich</button></div>`;
+}
+function nightSummary(m) {
+  if (m.err) return `<div class="callout warn">${ic('info')}<span>${esc(m.err)}</span></div>`;
+  const p = m.prev; if (!p) return `<p class="muted sm">Berechne …</p>`;
+  return `<div class="stopsum"><div class="kv"><span>Tag</span><b class="mono">${dMid(p.date)}</b></div><div class="kv"><span>Arbeitsbeginn</span><b class="mono">${hm(p.start)}</b></div><div class="kv"><span>Ende</span><b class="mono">${hm(p.at)}</b></div>
+    <div class="kv"><span>Brutto (Anwesenheit)</span><b class="mono">${dur(p.gross)}</b></div><div class="kv"><span>Pause (abgezogen)</span><b class="mono">${p.pause > 0 ? '−' : ''}${dur(p.pause)}</b></div>
+    <div class="kv"><span><b>Netto</b></span><b class="mono">${dur(p.net)}</b></div></div>`;
+}
 function stopSummary(m) {
   if (m.err) return `<div class="callout warn">${ic('info')}<span>${esc(m.err)}</span></div>`;
   const p = m.prev; if (!p) return `<p class="muted sm">Berechne …</p>`;
@@ -363,7 +376,7 @@ function vDashboard() {
   const trkBadge = `<span class="badge ${trkTone(ts)}"><span class="dot ${ts.cls}"></span>${ts.label}</span>`;
   const first = S.me.name.split(' ')[0];
   let msg;
-  const noWork = !S.day.segs.length, dayEnded = dayClosed(), longTrack = longTrackBanner(t, ts), st0 = t.start != null ? t.start : S.now - 30;
+  const noWork = !S.day.segs.length, dayEnded = dayClosed(), longTrack = nightBanner() || longTrackBanner(t, ts), st0 = t.start != null ? t.start : S.now - 30;
   if (ts.key === 'ask') msg = `Der Rechner läuft seit <b>${hm(S.day.start)}</b>, aber das Tracking wurde noch nicht gestartet.`;
   else if (noWork) msg = `Heute wird noch nicht getrackt. Starte das Tracking im Companion, hier im Web oder lege Zeitfenster für den automatischen Start fest.`;
   else if (ts.key === 'paused') msg = `Das Tracking ist seit <b>${hm(S.day.ended)}</b> gestoppt. Die Pause wird nicht gezählt – der Tag bleibt offen.`;
@@ -1026,6 +1039,15 @@ function renderModal() {
       ${stopSummary(m)}
       <p class="sm"><a href="#" data-a="stopMode" style="color:var(--brand);font-weight:600">${custom ? 'Stattdessen jetzt beenden' : 'Anderes Ende festlegen …'}</a></p></div>
     <div class="mf"><button class="btn" data-a="modalClose">Abbrechen</button><button class="btn primary" data-a="stopDo" ${m.prev ? '' : 'disabled'}>${custom ? `Mit Ende ${hm(at)} beenden` : 'Tracking beenden'}</button></div></div></div>`;
+  }
+  if (m.type === 'night') {
+    const prev = m.day === 'prev', n = S.night || {};
+    return `<div class="ov"><div class="modal" style="width:min(460px,100%)"><div class="mh"><h3>Wann hast du aufgehört?</h3><button class="ibtn right" data-a="modalClose">${ic('x')}</button></div>
+    <div class="mb"><p>Das Tracking läuft seit <b>${n.yesterday ? dMid(n.yesterday) : 'gestern'}, ${hm(n.since || 0)} Uhr</b>. Alles nach dem Ende wird nicht gezählt.</p>
+      <div class="row" style="gap:8px;margin-bottom:10px"><button class="btn sm ${prev ? 'primary' : ''}" data-a="nightDay" data-v="prev">Gestern${n.yesterday ? ' (' + dMid(n.yesterday) + ')' : ''}</button><button class="btn sm ${prev ? '' : 'primary'}" data-a="nightDay" data-v="today">Heute (nach Mitternacht)</button></div>
+      <label class="f">Ende (Uhrzeit)${timeField('modal.nat', m.at)}<span class="hint">${prev ? 'Zwischen Arbeitsbeginn und Mitternacht.' : `Zwischen 00:00 und jetzt (${hm(S.now)}).`}</span></label>
+      ${nightSummary(m)}</div>
+    <div class="mf"><button class="btn" data-a="modalClose">Abbrechen</button><button class="btn primary" data-a="nightDo" ${m.prev ? '' : 'disabled'}>${m.prev ? `Mit Ende ${hm(m.prev.at)} beenden` : 'Beenden'}</button></div></div></div>`;
   }
   if (m.type === 'startbal') return `<div class="ov"><div class="modal" style="width:min(480px,100%)"><div class="mh"><h3>Überstunden zu Beginn</h3><button class="ibtn right" data-a="modalClose">${ic('x')}</button></div>
     <div class="mb"><p>Hast du Überstunden (oder Minusstunden), die Tickly von Anfang an mitrechnen soll? Das legst du <b>einmalig</b> fest, danach kann es nur noch ein Administrator ändern. Hast du keine, wähle „Keine Überstunden“.</p>

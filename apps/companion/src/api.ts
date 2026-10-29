@@ -15,6 +15,7 @@ export interface ServerState {
   windowActive: boolean;
   dayOff: boolean;
   holiday: string | null;
+  nightCheck?: { since: number; hours: number } | null;
   mfa?: { required: boolean; compliant: boolean; daysLeft: number | null; expired: boolean } | null;
   settings?: { theme?: "system" | "light" | "dark" } | null;
   policy: { autostart: boolean; trackApps: boolean; trackLock: boolean; autoTrack: { enabled: boolean; ask: boolean } };

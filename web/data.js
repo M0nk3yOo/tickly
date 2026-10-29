@@ -92,7 +92,7 @@ const DB = { days: {}, forecastEnd: null, vacation: { total: 30, taken: 0, plann
 function applySnapshot(s) {
   TODAY = s.today; TRACK_START = s.trackStart;
   S.me = s.me; S.set = s.settings;
-  if (!S.themeLocked && S.set.theme && S.set.theme !== S.themePref) { S.themePref = S.set.theme; applyTheme(); } S.absences = s.absences; S.passkeys = s.passkeys; S.day = s.day;
+  if (!S.themeLocked && S.set.theme && S.set.theme !== S.themePref) { S.themePref = S.set.theme; applyTheme(); } S.absences = s.absences; S.passkeys = s.passkeys; S.day = s.day; S.night = s.nightCheck || null;
   setApps(s.apps || []); S.devices = s.devices || []; S.totp = s.totp || { enabled: false, recoveryLeft: 0 }; S.mfa = s.mfa || null; S.limits = s.limits || { editDaysBack: 0 }; S.demo = !!s.demo; if (!S.demo) { S.now = s.now; if (S.devices[0]) S.os = S.devices[0].os === 'macos' ? 'mac' : 'windows'; }
   S.users = s.users || []; if (s.reg) S.reg = s.reg; S.secQ = s.secQ || null; S.startBalSet = s.startBalSet; S.serverVersion = s.serverVersion;
   DB.days = {}; s.days.forEach(d => { DB.days[d.date] = d; });

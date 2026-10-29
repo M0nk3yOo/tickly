@@ -50,6 +50,8 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/absences/{id}", put(abs_update).delete(abs_delete))
         .route("/companion", post(companion))
         .route("/tracking/stop-preview", post(stop_preview))
+        .route("/tracking/night/confirm", post(night_confirm))
+        .route("/tracking/night/stop", post(night_stop))
         .route("/devices/pair-code", post(device::pair_code))
         .route("/devices/{id}", delete(device::revoke))
         .route("/device/pair", post(device::pair))
@@ -481,7 +483,7 @@ async fn snapshot_json(app: &App, u: &UserRow, today: NaiveDate, now: f64) -> Re
                 "id": k.id, "name": k.name, "created": fmt_de(app.local(k.created_at).0),
                 "last": k.last_used_at.map(|t| db::ago_label(t, now_utc)).unwrap_or_else(|| "noch nie".into()),
             })).collect::<Vec<_>>(),
-            "day": c.day, "days": days, "forecastEnd": forecast_end(c, &t), "apps": apps_json(c),
+            "day": c.day, "nightCheck": night_check(c).as_ref().map(night_json), "days": days, "forecastEnd": forecast_end(c, &t), "apps": apps_json(c),
             "vacation": vacation_summary(c, 30), "nextHolidays": next_holidays(c, 3),
             "holidays": year_holidays(year, c.settings),
         })
@@ -543,7 +545,7 @@ async fn today(State(app): St, h: HeaderMap, Query(q): Query<NowQ>) -> Res<Json<
     let calc = Calc::load(&app, &u, today, now).await?;
     Ok(Json(calc.with(|c| {
         let t = day_stat(c, c.today);
-        json!({ "day": c.day, "today": t, "date": today, "now": now, "forecastEnd": forecast_end(c, &t) })
+        json!({ "day": c.day, "today": t, "date": today, "now": now, "forecastEnd": forecast_end(c, &t), "nightCheck": night_check(c).as_ref().map(night_json) })
     })))
 }
 
@@ -650,6 +652,60 @@ async fn stop_preview(State(app): St, h: HeaderMap, Json(r): Json<PreviewReq>) -
     // `diff`: was der Tag nach dem Beenden zum Überstundenkonto beiträgt (Minus wird jetzt verbucht, vorher zählte es nicht)
     Ok(Json(json!({ "at": c.day.ended, "gross": s.gross, "net": s.net, "pause": s.gross - s.net, "counted": s.counted, "soll": s.soll, "start": s.start,
         "diff": s.diff, "balanceBefore": before, "balanceAfter": c.with(total_balance) })))
+}
+
+#[derive(Deserialize)]
+struct NightStop { /// Minuten seit Mitternacht des Vortags (über 1440 = nach Mitternacht)
+    at: f64, #[serde(default)] preview: bool }
+
+fn night_json(c: &tickly_core::NightCheck) -> Value { json!({ "since": c.since, "hours": c.hours, "yesterday": c.yesterday }) }
+
+/// „Ich arbeite wirklich“: die Rückfrage zum Tracking über Nacht entfällt.
+async fn night_confirm(State(app): St, h: HeaderMap) -> Res<Json<Value>> {
+    let u = auth(&app, &h, false).await?;
+    if app.cfg.demo { return bad("Im Demo-Modus nicht verfügbar") }
+    let (today, now) = app.clock(None);
+    let mut tx = app.pool.begin().await?;
+    db::lock_user(&mut tx, &u.id).await?;
+    let Some(mut d) = db::get_day(&mut tx, &u.id, today).await? else { return conflict("Heute läuft kein Tracking.") };
+    d.confirm_night(now).map_err(|m| ApiError(StatusCode::CONFLICT, m))?;
+    db::put_day(&mut tx, &u.id, today, &d).await?;
+    tx.commit().await?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+/// Ein über Nacht weitergelaufenes Tracking beenden, mit Ende am Vortag oder nach Mitternacht (`preview`: nur berechnen).
+async fn night_stop(State(app): St, h: HeaderMap, Json(r): Json<NightStop>) -> Res<Json<Value>> {
+    let u = auth(&app, &h, false).await?;
+    if app.cfg.demo { return bad("Im Demo-Modus nicht verfügbar") }
+    if !r.at.is_finite() || r.at <= 0.0 { return bad("Bitte ein Ende angeben") }
+    let (today, now) = app.clock(None);
+    let yesterday = today - Duration::days(1);
+    let mut tx = app.pool.begin().await?;
+    db::lock_user(&mut tx, &u.id).await?;
+    let mut cur = match db::get_day(&mut tx, &u.id, today).await? { Some(d) if d.tracking && d.carried => d, _ => return conflict("Es läuft kein Tracking über Mitternacht.") };
+    let mut prev = db::get_day(&mut tx, &u.id, yesterday).await?;
+    // Ende am Vortag: dort schneiden und heute nichts übernehmen; Ende heute: nur heute schneiden
+    let (date, day) = if r.at <= 1440.0 {
+        let Some(p) = prev.as_mut() else { return conflict("Der Vortag ist nicht mehr vorhanden.") };
+        p.stop_web(1440.0, r.at).map_err(|m| ApiError(StatusCode::CONFLICT, m))?;
+        (yesterday, p.clone())
+    } else {
+        cur.stop_web(now, r.at - 1440.0).map_err(|m| ApiError(StatusCode::CONFLICT, m))?;
+        (today, cur.clone())
+    };
+    let k = calc_segs(&resolve(&day.segs, 1440.0), &u.settings.0);
+    let end = day.ended.unwrap_or(0.0);
+    let out = json!({ "ok": true, "date": date, "start": day.segs.first().map(|g| g.from), "at": end, "gross": k.gross, "pause": k.gross - k.net, "net": k.net, "counted": k.counted });
+    if r.preview { return Ok(Json(out)) }
+    if let (Some(p), true) = (prev.as_ref(), date == yesterday) {
+        db::put_day(&mut tx, &u.id, yesterday, p).await?;
+        db::put_day(&mut tx, &u.id, today, &DayState::empty(now)).await?;
+    } else {
+        db::put_day(&mut tx, &u.id, today, &cur).await?;
+    }
+    tx.commit().await?;
+    Ok(Json(out))
 }
 
 /* ---------- Administration ---------- */

@@ -429,3 +429,50 @@ fn web_stop_from_pause_ends_at_pause_start() {
     assert!(day.is_closed());
     assert!(day.events.last().unwrap().txt.contains("Beginn der Pause"));
 }
+
+/// Tracking von gestern 14:00 bis jetzt; `usual` frühere Nächte mit Arbeit bis 02:00
+fn night_ctx(usual: usize, now: f64, f: impl FnOnce(&Ctx) -> Option<NightCheck>) -> Option<NightCheck> {
+    let s = Settings::default();
+    let today = d("2026-10-26");
+    let mut day = DayState::boot(14.0 * 60.0, "Windows").continued("Windows");
+    day.carried = true;
+    let hist = move |dt: NaiveDate| -> Option<Vec<Seg>> {
+        let k = (today - dt).num_days();
+        if k == 1 { return Some(vec![Seg::app(14.0 * 60.0, 1440.0, "code")]) }
+        if (2..2 + usual as i64).contains(&k) { return Some(vec![Seg::app(0.0, 120.0, "code"), Seg::app(480.0, 900.0, "code")]) }
+        None
+    };
+    let c = Ctx { settings: &s, absences: &[], today, track_start: d("2026-01-05"), now, day: &day, history: &hist };
+    f(&c)
+}
+
+#[test]
+fn night_check_asks_when_it_does_not_fit_the_pattern() {
+    let q = night_ctx(0, 180.0, |c| night_check(c)).expect("fragt nach");
+    assert_eq!(q.since, 14.0 * 60.0);
+    assert_eq!(q.hours, 10.0 + 3.0);
+    // bis zur Schonfrist wird nicht gefragt
+    assert!(night_ctx(0, 59.0, |c| night_check(c)).is_none());
+    // zwei frühere Nächte reichen nicht als Muster, drei schon
+    assert!(night_ctx(2, 100.0, |c| night_check(c)).is_some());
+    assert!(night_ctx(3, 100.0, |c| night_check(c)).is_none());
+    // das Muster gilt nur bis zur gewohnten Uhrzeit: um 04:00 war früher nie jemand dabei
+    assert!(night_ctx(3, 240.0, |c| night_check(c)).is_some());
+}
+
+#[test]
+fn night_check_is_quiet_after_confirmation_or_without_carry_over() {
+    let s = Settings::default();
+    let today = d("2026-10-26");
+    let none = |_: NaiveDate| -> Option<Vec<Seg>> { None };
+    let mut day = DayState::boot(0.0, "Windows").continued("Windows");
+    let ask = |day: &DayState| night_check(&Ctx { settings: &s, absences: &[], today, track_start: today, now: 200.0, day, history: &none });
+    assert!(ask(&day).is_some());
+    day.confirm_night(200.0).unwrap();
+    assert!(ask(&day).is_none(), "bestätigt");
+    let fresh = DayState::boot(0.0, "Windows");
+    assert!(ask(&fresh).is_none(), "Rechnerstart nach Mitternacht ist keine Übernahme");
+    let mut stopped = DayState::boot(0.0, "Windows").continued("Windows");
+    stopped.quit(150.0).unwrap();
+    assert!(ask(&stopped).is_none(), "beendet");
+}

@@ -18,6 +18,7 @@ Liste mit Status (aktiv, wartet auf Freigabe, eingeladen, gesperrt), Rolle, heut
 ## Registrierung & Richtlinien
 
 - **Warnung bei langem Tracking** (Standard 10 Stunden, 0 = aus): Läuft das Tracking eines Benutzers so viele Stunden (Brutto), sieht er einen Hinweis mit Beenden-Knöpfen auf der Übersicht und bekommt (mit SMTP) eine Mail, höchstens einmal am Tag. Besonders nützlich für Benutzer ohne Companion.
+- **Tracking über Nacht:** Läuft ein Tracking über Mitternacht weiter und passt nicht zu den letzten 60 Tagen des Benutzers (weniger als drei Nächte mit Arbeit bis zur jetzigen Uhrzeit), fragt Tickly ab 01:00 Uhr nach, ob es versehentlich weiterläuft (Übersicht, Companion, Mail mit SMTP, einmal je Nacht). Das ist immer aktiv und hat keine Einstellung. Erscheint im Protokoll als „Tracking“.
 - **Zurücksetzen per Sicherheitsfragen** (Standard: an): Neue Konten mit Passwort wählen bei der Registrierung drei Fragen und können ihr Passwort damit selbst zurücksetzen. Das ist **schwächer** als ein Link per Mail, weil sich Antworten erraten lassen; schalte es aus, wenn du das nicht möchtest. Schutz: alle drei Antworten müssen stimmen, fünf Fehlversuche pro Konto und Stunde sperren diesen Weg, Fehlversuche zählen für die IP-Sperre, ein zweiter Faktor wird nie umgangen, und der Benutzer bekommt eine Mail.
 
 ![Richtlinien](screenshots/12-admin-richtlinien.png)

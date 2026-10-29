@@ -29,6 +29,14 @@
 
 Du brauchst den Companion nicht. Auf der Übersicht startest du mit **Im Web starten** und beendest mit **Tracking beenden**. Der Hinweis „Companion nicht aktiv“ bleibt stehen, er ist dann nur eine Information. Beachte: Ohne Companion weiß Tickly nicht, ob du am Rechner bist. Das Tracking läuft, bis du es beendest (über Mitternacht läuft es weiter). Deshalb:
 - Läuft das Tracking **länger als 10 Stunden** (Brutto), erscheint ein Hinweis auf der Übersicht und du bekommst eine **Mail** („Läuft dein Tracking noch?“), höchstens einmal am Tag. Der Administrator kann die Grenze ändern oder abschalten.
+
+### Läuft das Tracking über Nacht?
+
+Läuft das Tracking über Mitternacht weiter, prüft Tickly nach einer Stunde (ab 01:00 Uhr), ob das zu deinen bisherigen Zeiten passt. Dass du ab und zu spät noch arbeitest, ist normal: Gab es in den letzten 60 Tagen mindestens drei Nächte, in denen du bis zur jetzigen Uhrzeit durchgearbeitet hast, fragt Tickly nicht. Sonst erscheint auf der Übersicht **„Läuft dein Tracking noch?“**, im Companion ein Hinweis und, wenn der Server Mails versenden kann, eine Mail (einmal pro Nacht). Du hast zwei Möglichkeiten:
+- **Ende festlegen …**: Du gibst an, wann du wirklich aufgehört hast, am Vortag oder nach Mitternacht. Tickly zeigt vorher Brutto, Pause und Netto. Alles danach wird nicht gezählt.
+- **Ich arbeite wirklich**: Die Zeit zählt weiter, und du wirst in dieser Nacht nicht mehr gefragt.
+
+Bis du antwortest, läuft die Zeit weiter. Nichts wird von selbst beendet.
 - Mit **Ende festlegen** korrigierst du das Ende, wenn du es vergessen hast.
 - Der heutige Tag erzeugt erst Minus, wenn er beendet ist.
 

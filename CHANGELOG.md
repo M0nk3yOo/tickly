@@ -2,6 +2,9 @@
 
 ## Unveröffentlicht
 
+Aktualisierung von 0.9.5: Die Datenbank wird beim Start automatisch angepasst (Migration 0012).
+
+- **Plausibilitätsprüfung nach Mitternacht:** Läuft ein Tracking über Mitternacht weiter und passt das nicht zu den bisherigen Zeiten (weniger als drei Nächte in den letzten 60 Tagen mit Arbeit bis zur jetzigen Uhrzeit), fragt Tickly ab 01:00 Uhr nach, ob es versehentlich noch läuft: Hinweis auf der Übersicht, im Companion und per Mail (einmal je Nacht). Mit **Ende festlegen …** wird das Tracking am Vortag oder nach Mitternacht beendet (mit Vorschau von Brutto, Pause und Netto), **Ich arbeite wirklich** bestätigt die Nachtarbeit. Es wird nichts automatisch beendet.
 - **Companion:** Die angezeigte Zeit sprang gelegentlich vor und wieder zurück. Ursache war die Anzeige, nicht die Aufzeichnung: Der Companion rechnete mit der Uhrzeit des letzten Ticks, das Fenster zählte aber ab dem Eintreffen der Meldung weiter. Dauerte eine Übertragung zum Server länger, entstand ein Versatz in Höhe dieser Dauer. Jetzt rechnet der Companion die Anzeige zum Abfragezeitpunkt und das Fenster zählt von diesem Bezugszeitpunkt aus weiter. Aufgezeichnet wird weiterhin nur vom Companion; der Server wendet dessen Ereignisse an und rechnet nicht parallel mit.
 
 ## 0.9.5

@@ -4,6 +4,7 @@ use crate::holidays::{easter, holidays};
 use std::collections::BTreeMap;
 use crate::model::*;
 use chrono::{Datelike, Duration, NaiveDate};
+use serde::Serialize;
 
 /// Alles, was für die Berechnung eines Benutzers gebraucht wird. Die Uhrzeit (`now`) kommt von außen.
 pub struct Ctx<'a> {
@@ -283,4 +284,47 @@ pub fn track_policy(s: &Settings, absences: &[Absence], date: NaiveDate, now: f6
 pub fn policy_for(a: &AutoTrack, off: bool, date: NaiveDate, now: f64) -> Policy {
     let auto_from = if a.enabled && !off { a.window_start(date.weekday().num_days_from_monday() as usize, now) } else { None };
     Policy { auto_from, ask: a.ask }
+}
+
+/* ---------- Plausibilitätsprüfung nach Mitternacht ---------- */
+/// So lange (Minuten nach Mitternacht) wird ein weiterlaufendes Tracking nicht hinterfragt: kurz über Mitternacht zu arbeiten ist normal.
+pub const NIGHT_GRACE: f64 = 60.0;
+/// So viele frühere Tage mit Arbeit bis zu dieser Uhrzeit machen eine Nachtschicht zum Muster.
+pub const NIGHT_PATTERN_DAYS: usize = 3;
+/// So weit (in Tagen) wird zurückgeschaut.
+pub const NIGHT_LOOKBACK: i64 = 60;
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NightCheck {
+    /// Seit wann das Tracking ohne Unterbrechung läuft: Minuten seit Mitternacht des Vortags.
+    pub since: f64,
+    /// So viele Stunden läuft es schon ununterbrochen.
+    pub hours: f64,
+    /// Der Vortag
+    pub yesterday: NaiveDate,
+}
+
+/// Läuft ein Tracking über Mitternacht weiter, länger als die Schonfrist, und passt das nicht zu den bisherigen Tagen
+/// (weniger als `NIGHT_PATTERN_DAYS` Tage mit Arbeit ab Mitternacht bis mindestens zu dieser Uhrzeit), soll der Benutzer gefragt werden.
+pub fn night_check(c: &Ctx) -> Option<NightCheck> {
+    let d = c.day;
+    if !d.tracking || !d.carried || d.night_ok || c.now < NIGHT_GRACE { return None }
+    let usual = (2..=NIGHT_LOOKBACK)
+        .filter_map(|k| (c.history)(c.today - Duration::days(k)))
+        .filter(|segs| segs.iter().any(|g| g.kind != SegKind::Off && g.from <= 1.0 && g.to.unwrap_or(g.from) >= c.now - 5.0))
+        .count();
+    if usual >= NIGHT_PATTERN_DAYS { return None }
+    let yesterday = c.today - Duration::days(1);
+    // Beginn des ununterbrochenen Laufs: am Ende des Vortags rückwärts über lückenlos anschließende Abschnitte
+    let mut since = 0.0;
+    if let Some(segs) = (c.history)(yesterday) {
+        let mut edge = 1440.0;
+        for g in segs.iter().rev() {
+            if g.kind == SegKind::Off || (g.to.unwrap_or(g.from) - edge).abs() > 1.0 { break }
+            since = g.from;
+            edge = g.from;
+        }
+    }
+    Some(NightCheck { since, hours: (1440.0 - since + c.now) / 60.0, yesterday })
 }

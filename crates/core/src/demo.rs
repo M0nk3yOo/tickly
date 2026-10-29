@@ -158,6 +158,8 @@ pub fn example_day() -> DayState {
         declined: None,
         last_beat: None,
         edited: false,
+        carried: false,
+        night_ok: false,
         last_app: "code".into(),
         segs: vec![
             o(472.0, 485.0, "mail"), o(485.0, 500.0, "teams"), o(500.0, 580.0, "code"), o(580.0, 600.0, "web"),

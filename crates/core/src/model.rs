@@ -232,6 +232,12 @@ pub struct DayState {
     /// Zeiten wurden nachträglich bearbeitet oder ergänzt.
     #[serde(default)]
     pub edited: bool,
+    /// Der Tag begann mit einem Tracking, das über Mitternacht weiterlief.
+    #[serde(default)]
+    pub carried: bool,
+    /// Der Benutzer hat bestätigt, dass er über Mitternacht wirklich arbeitet (keine Rückfrage mehr).
+    #[serde(default)]
+    pub night_ok: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

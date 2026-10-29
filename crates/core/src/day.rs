@@ -65,7 +65,7 @@ impl Track {
 
 impl DayState {
     fn blank(now: f64) -> DayState {
-        DayState { start: now, tracking: false, ended: None, last_app: "other".into(), segs: vec![], events: vec![], stop: Some(Stop::Idle), declined: None, last_beat: None, edited: false }
+        DayState { start: now, tracking: false, ended: None, last_app: "other".into(), segs: vec![], events: vec![], stop: Some(Stop::Idle), declined: None, last_beat: None, edited: false, carried: false, night_ok: false }
     }
 
     /// Noch nichts erfasst: der Companion hat sich heute nicht gemeldet.
@@ -81,6 +81,7 @@ impl DayState {
         d.last_app = self.last_app.clone();
         let locked = self.track() == Track::Locked;
         d.begin(0.0, 0.0, format!("{os}: Tracking läuft über Mitternacht weiter"));
+        d.carried = true;
         if locked {
             d.segs[0].kind = SegKind::Locked;
             d.segs[0].app = None;
@@ -280,6 +281,14 @@ impl DayState {
             "Tracking im Web gestartet · Lücke wird nicht als Arbeitszeit gezählt".to_string()
         };
         self.begin(now, now, txt);
+        Ok(())
+    }
+
+    /// Der Benutzer bestätigt, dass er über Nacht wirklich arbeitet.
+    pub fn confirm_night(&mut self, now: f64) -> Result<(), String> {
+        if !self.tracking || !self.carried { return Err("Es läuft kein Tracking über Mitternacht.".into()) }
+        self.night_ok = true;
+        self.ev(now, "ask", "Rückfrage zur Nacht: Arbeit über Mitternacht bestätigt".into());
         Ok(())
     }
 

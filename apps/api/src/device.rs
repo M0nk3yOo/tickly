@@ -187,6 +187,7 @@ async fn state_json(app: &App, u: &UserRow, last_seq: i64) -> Res<Value> {
             "start": t.start, "counted": t.counted, "soll": t.soll, "diff": t.diff_live, "dayOff": t.info.off, "holiday": t.info.holiday,
             "balance": total_balance(c),
             "windowActive": p.auto_from.is_some(),
+            "nightCheck": night_check(c).map(|n| json!({ "since": n.since, "hours": n.hours })),
             "policy": { "trackApps": s.track_apps, "trackLock": s.track_lock, "trackTitles": s.track_titles, "excluded": s.excluded, "idle": s.idle, "autostart": s.autostart, "autoTrack": s.auto_track },
         })
     }))
