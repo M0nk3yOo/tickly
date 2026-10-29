@@ -274,6 +274,12 @@ const H = {
     S.modal = { type: 'adminpwDone', u, password: r.password, pwLogin: r.pwLogin }; renderModalOnly(); try { await reload(); } catch (e) { /* egal */ }
   },
   async pwCopy() { try { await navigator.clipboard.writeText(S.modal.password); toast('Passwort kopiert'); } catch (e) { toast('Bitte das Passwort markieren und kopieren', true); } },
+  trackStartOpen() { S.modal = { type: 'trackstart', date: TRACK_START }; renderModalOnly(); },
+  async trackStartSave() {
+    const date = S.modal.date;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return toast('Bitte ein gültiges Datum eingeben', true);
+    await api('POST', '/me/track-start', { date }); closeModal(); toast('Zeiterfassung ab ' + dMid(date)); await sync();
+  },
   startBalOpen() { S.modal = { type: 'startbal' }; renderModalOnly(); },
   async startBalSave() {
     const hours = regStartBal();

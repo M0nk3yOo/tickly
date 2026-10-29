@@ -1,5 +1,9 @@
 # Änderungen
 
+## Unveröffentlicht
+
+- **Startdatum der Zeiterfassung selbst festlegen:** Unter *Einstellungen → Profil → Zeiterfassung ab* kann jeder Benutzer das Datum ändern, ab dem Tickly Arbeitszeit und Überstundenkonto rechnet. Tage davor zählen nicht, es entstehen dort also keine Minusstunden, zum Beispiel nach Testtagen mit unvollständiger Aufzeichnung. Die Zeiten früherer Tage bleiben gespeichert und zählen wieder, wenn das Datum früher gesetzt wird. „Mitglied seit“ zeigt jetzt das Datum der Kontoanlage statt des Startdatums. Der Vorgang steht im Protokoll.
+
 ## 0.9.8
 
 Aktualisierung von 0.9.7: keine Änderungen an der Konfiguration oder Datenbank nötig. **Der macOS-Companion muss einmal neu gekoppelt werden** (siehe unten).

@@ -2174,3 +2174,41 @@ async fn a_second_companion_starting_tracking_triggers_a_warning() {
     let (_, s) = b.call_h(Method::GET, "/api/device/state", None, Some(&tb)).await;
     assert!(s["deviceClash"].is_null());
 }
+
+#[tokio::test]
+async fn the_user_can_set_the_start_date_of_time_tracking() {
+    let mut c = Client::real().await;
+    assert_eq!(c.login("chef@example.de", "Sehr-Langes-Passwort-42").await, StatusCode::OK);
+    let (today, _) = c.app.clock(None);
+    let bal = |s: &Value| s["users"][0]["bal"].as_f64().unwrap();
+    // Ein neues Konto beginnt heute: keine Minusstunden
+    let s = c.get("/api/snapshot").await.1;
+    assert_eq!(s["trackStart"], json!(today));
+    assert_eq!(s["memberSince"], json!(today));
+    assert_eq!(bal(&s), 0.0);
+
+    // Früher gesetzt: nicht aufgezeichnete Arbeitstage zählen als Minus
+    let early = today - chrono::Duration::days(21);
+    assert_eq!(c.post("/api/me/track-start", json!({"date": early})).await.0, StatusCode::OK);
+    let s = c.get("/api/snapshot").await.1;
+    assert_eq!(s["trackStart"], json!(early));
+    assert_eq!(s["memberSince"], json!(today), "Mitglied seit bleibt");
+    assert!(bal(&s) < -60.0, "{}", bal(&s));
+
+    // Später gesetzt (Testtage nicht mitrechnen): das Minus verschwindet
+    assert_eq!(c.post("/api/me/track-start", json!({"date": today})).await.0, StatusCode::OK);
+    assert_eq!(bal(&c.get("/api/snapshot").await.1), 0.0);
+
+    // Ungültige Angaben
+    assert_eq!(c.post("/api/me/track-start", json!({"date": "1999-12-31"})).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(c.post("/api/me/track-start", json!({"date": today + chrono::Duration::days(400)})).await.0, StatusCode::BAD_REQUEST);
+    assert!(c.post("/api/me/track-start", json!({"date": "kein-datum"})).await.0.is_client_error());
+    assert_eq!(c.get("/api/snapshot").await.1["trackStart"], json!(today));
+
+    // Ohne Anmeldung nicht
+    assert_eq!(c.fresh().post("/api/me/track-start", json!({"date": today})).await.0, StatusCode::UNAUTHORIZED);
+    // Im Demo-Modus nicht
+    let mut d = Client::new().await;
+    d.login_andre().await;
+    assert_eq!(d.post("/api/me/track-start", json!({"date": "2026-02-02"})).await.0, StatusCode::BAD_REQUEST);
+}

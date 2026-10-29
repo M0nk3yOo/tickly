@@ -46,6 +46,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/settings", put(put_settings))
         .route("/me", post(put_me))
         .route("/me/start-balance", post(set_start_balance))
+        .route("/me/track-start", post(set_track_start))
         .route("/absences", post(abs_create))
         .route("/absences/{id}", put(abs_update).delete(abs_delete))
         .route("/companion", post(companion))
@@ -479,7 +480,7 @@ async fn snapshot_json(app: &App, u: &UserRow, today: NaiveDate, now: f64) -> Re
         while d <= last { days.push(day_stat(c, d)); d += Duration::days(1); }
         let t = day_stat(c, c.today);
         json!({
-            "today": today, "trackStart": u.track_start, "now": now, "demo": app.cfg.demo,
+            "today": today, "trackStart": u.track_start, "memberSince": app.local(u.created_at).0, "now": now, "demo": app.cfg.demo,
             "me": db::me_json(u), "settings": c.settings, "absences": abs,
             "passkeys": creds.iter().map(|k| json!({
                 "id": k.id, "name": k.name, "created": fmt_de(app.local(k.created_at).0),
@@ -782,6 +783,22 @@ async fn admin_invite(State(app): St, h: HeaderMap, Extension(ip): Extension<Cli
             Some(("Konto einrichten".into(), format!("{}/#/register", app.cfg.public_url.as_str().trim_end_matches('/')))));
     }
     Ok(Json(json!({ "ok": true, "mailed": mailed })))
+}
+
+#[derive(Deserialize)]
+struct TrackStartReq { date: NaiveDate }
+
+/// Ab wann Tickly Zeiten und Überstundenkonto rechnet (z. B. nach ein paar Testtagen). Tage davor zählen nicht;
+/// ihre Daten bleiben gespeichert und zählen wieder, wenn das Datum früher gesetzt wird.
+async fn set_track_start(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientIp>, Json(r): Json<TrackStartReq>) -> Res<Json<Value>> {
+    let u = auth(&app, &h, false).await?;
+    if app.cfg.demo { return bad("Im Demo-Modus nicht verfügbar") }
+    let (today, _) = app.clock(None);
+    if r.date < NaiveDate::from_ymd_opt(2000, 1, 1).unwrap() { return bad("Das Startdatum liegt zu weit in der Vergangenheit") }
+    if r.date > today + Duration::days(366) { return bad("Das Startdatum darf höchstens ein Jahr in der Zukunft liegen") }
+    sqlx::query("UPDATE users SET track_start = $2 WHERE id = $1").bind(&u.id).bind(r.date).execute(&app.pool).await?;
+    netsec::log(&app, "trackstart", true, ip, &h, Some(&u.id), Some(&u.email), &format!("Startdatum der Zeiterfassung geändert: {} → {}", fmt_de(u.track_start), fmt_de(r.date))).await;
+    Ok(Json(json!({ "ok": true, "trackStart": r.date })))
 }
 
 #[derive(Deserialize)]
