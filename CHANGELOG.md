@@ -1,6 +1,8 @@
 # Änderungen
 
-## Unveröffentlicht
+## 0.9.10
+
+Aktualisierung von 0.9.9: keine Änderungen an der Konfiguration oder Datenbank nötig. Die Änderung betrifft nur die Weboberfläche (Server); der Companion ist funktional unverändert.
 
 - **Tagesansicht:** Die Ereignisse stehen jetzt mit den neuesten oben.
 
