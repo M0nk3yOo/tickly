@@ -19,7 +19,13 @@ Die Installer stehen bei den **Release-Dateien** des Projekts (GitHub → *Relea
 - **macOS:** Beim Start kommt „Tickly Companion nicht geöffnet – Apple konnte nicht überprüfen, ob … frei von Schadsoftware ist“. **Nicht** „In den Papierkorb legen“ wählen, sondern *Fertig*. Dann:
   1. Die App aus dem DMG in den Ordner *Programme* ziehen.
   2. Entweder *Systemeinstellungen → Datenschutz & Sicherheit*, nach unten blättern, bei „Tickly Companion wurde blockiert“ auf **Trotzdem öffnen** klicken (erscheint erst nach dem ersten Startversuch) und mit Passwort bestätigen,
-  3. oder im Terminal die Sperre für diese App aufheben: `xattr -dr com.apple.quarantine "/Applications/Tickly Companion.app"` und die App dann normal starten.
+  3. oder im Terminal die Sperre für diese App aufheben und die App dann normal starten. Das ist der schnellste Weg, wenn die App nicht öffnet oder „Trotzdem öffnen“ fehlt:
+
+     ```sh
+     xattr -dr com.apple.quarantine "/Applications/Tickly Companion.app"
+     ```
+
+     Ursache ist das Merkmal `com.apple.quarantine`, das der Browser beim Herunterladen setzt. Der Befehl entfernt nur dieses Merkmal von der Tickly-App.
 
   Das „Rechtsklick → Öffnen“ aus älteren macOS-Versionen funktioniert in neueren nicht mehr.
 

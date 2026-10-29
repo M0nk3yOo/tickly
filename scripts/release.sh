@@ -110,6 +110,9 @@ awk -v v="## $VERSION" 'index($0, v)==1 {on=1; next} /^## / {on=0} on' CHANGELOG
   echo; echo "**Installation:** [docs/INSTALLATION.md](docs/INSTALLATION.md) · **Companion:** [docs/COMPANION.md](docs/COMPANION.md)"
   if [ "$PUSHED" = 1 ]; then echo; echo "Docker-Image: \`$IMAGE:$VERSION\`"; fi
   echo; echo "> Die Installer sind nicht signiert (siehe docs/COMPANION.md). Prüfsummen: \`SHA256SUMS\`."
+  echo; echo "**macOS: App lässt sich nicht öffnen?** Nach dem Kopieren nach *Programme* im Terminal ausführen und die App dann normal starten:"
+  echo; echo '```sh'; echo 'xattr -dr com.apple.quarantine "/Applications/Tickly Companion.app"'; echo '```'
+
 } >> "$OUT/notes.md"
 cat "$OUT/SHA256SUMS"
 

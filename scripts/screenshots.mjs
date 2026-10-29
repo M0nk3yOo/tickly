@@ -45,8 +45,8 @@ async function seed() {
     await call("POST", "/auth/logout", {}, s.cookie); // die Sitzung zum Koppeln soll in der Übersicht nicht auftauchen
   };
   await pair("lena.hoffmann@example.de", "NB-LENA-01", "windows", "0.8.2");
-  await pair("sophie.wagner@example.de", "MacBook Pro von Sophie", "macos", "0.9.6");
-  await pair("andre@example.de", "DESKTOP-ANDRE", "windows", "0.9.6");
+  await pair("sophie.wagner@example.de", "MacBook Pro von Sophie", "macos", "0.9.7");
+  await pair("andre@example.de", "DESKTOP-ANDRE", "windows", "0.9.7");
   // E-Mail, Sicherung, manuelle Zeit
   await call("PUT", "/admin/smtp", { enabled: true, host: "smtp.example.com", port: 587, security: "starttls", username: "zeit@example.com", newPassword: "demo", fromEmail: "zeit@example.com", fromName: "Tickly", notifyAdminRegistration: true, notifyAdminBlock: true, notifyUserApproved: true }, admin.cookie);
   await call("POST", "/admin/backups", {}, admin.cookie);
