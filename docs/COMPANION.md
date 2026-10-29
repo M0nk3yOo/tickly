@@ -38,7 +38,7 @@ macOS braucht **keine** Zusatzrechte (weder „Bedienungshilfen“ noch „Bilds
 1. In der Weboberfläche: **Companion-App → Kopplungscode erzeugen** (gilt 10 Minuten, einmal verwendbar).
 2. Companion starten, **Server-Adresse** (z. B. `zeit.example.com`) und **Code** eingeben → *Koppeln*.
 
-Das Gerät erhält ein eigenes Token (im **macOS-Schlüsselbund** bzw. in der **Windows-Anmeldeinformationsverwaltung**). In der Weboberfläche und von Administratoren lässt sich die Kopplung jederzeit aufheben.
+Das Gerät erhält ein eigenes Token (unter **macOS** in einer Datei, die nur dein Benutzer lesen kann, **nicht** im Schlüsselbund; unter **Windows** in der **Anmeldeinformationsverwaltung**). In der Weboberfläche und von Administratoren lässt sich die Kopplung jederzeit aufheben.
 
 Unbeaufsichtigte Einrichtung (z. B. per Skript): Umgebungsvariable `TICKLY_PAIR="zeit.example.com|ABCD-EFGH"` beim ersten Start.
 
@@ -64,7 +64,7 @@ Einstellungen (Zeitfenster, Autostart, ausgeschlossene Apps, Pausenregeln) nimms
 | Was | Wo |
 |---|---|
 | Kopplung, Warteschlange, lokaler Tagesstand | macOS: `~/Library/Application Support/de.tickly.companion/` · Windows: `%APPDATA%\de.tickly.companion\` |
-| Token | Schlüsselbund bzw. Anmeldeinformationsverwaltung (nur wenn nicht verfügbar: Datei `device.token`, nur für den Benutzer lesbar) |
+| Token | macOS: Datei `device.token` im Datenordner (nur für den Benutzer lesbar, Rechte 0600) · Windows: Anmeldeinformationsverwaltung (nur wenn nicht verfügbar: dieselbe Datei) |
 
 ## Deinstallieren
 

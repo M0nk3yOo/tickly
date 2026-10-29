@@ -18,7 +18,7 @@ Browser (Weboberfläche)    ──HTTPS + Cookie────────▶     
 | `apps/api` | Axum-Server, SQLx/PostgreSQL, WebAuthn, TOTP, Sitzungen, Gerätekopplung, Protokoll/IP-Sperren, Sicherung, SMTP, Verschlüsselung (`secrets`) |
 | `crates/platform` | `Platform`-Trait; macOS (`NSWorkspace`, `CGSession…`, Power-Off-Notification) und Windows (`GetForegroundWindow`, `OpenInputDesktop`, `WM_ENDSESSION`) |
 | `crates/agent` | `Engine`: beobachtet das System, führt den Tag lokal mit, schreibt Ereignisse in eine dauerhafte **Outbox** und sendet sie (`/api/device/events`) |
-| `apps/companion` | Tauri 2: Tray, Fenster (React), Schlüsselbund, Engine-Thread alle 2 s |
+| `apps/companion` | Tauri 2: Tray, Fenster (React), Token-Ablage, Engine-Thread alle 2 s |
 | `web/` | Weboberfläche ohne Build-Schritt. Rechnet nichts selbst: alle Zahlen kommen vom Server (`/api/snapshot`) |
 
 ## Datenmodell (PostgreSQL)

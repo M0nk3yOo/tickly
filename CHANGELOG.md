@@ -1,5 +1,9 @@
 # Änderungen
 
+## Unveröffentlicht
+
+- **macOS: kein Schlüsselbund mehr.** Der Companion legt das Geräte-Token unter macOS nicht mehr im Schlüsselbund ab (dort fragte macOS bei der unsignierten App nach), sondern in einer Datei `device.token` im Datenordner, nur für den Benutzer lesbar. **Nach dem Update ist einmal eine neue Kopplung nötig**; der alte Schlüsselbund-Eintrag `de.tickly.companion` kann in der Schlüsselbundverwaltung gelöscht werden. Unter Windows ändert sich nichts.
+
 ## 0.9.7
 
 Aktualisierung von 0.9.6: Die Datenbank wird beim Start automatisch angepasst (Migration 0013).

@@ -10,7 +10,7 @@
 | TOTP-Geheimnis | Schlüssel der Authenticator-App | mit `TICKLY_SECRET` **verschlüsselt** (sonst Klartext) |
 | Wiederherstellungscodes | nur als SHA-256-Hash | |
 | Zeiten | Start/Ende, Sperrzeiten, **App-Namen** je Abschnitt | **keine Fenstertitel, keine Inhalte, keine Screenshots, keine Tastatureingaben** |
-| Geräte-Token | nur als SHA-256-Hash; auf dem Gerät im Schlüsselbund | Aufheben macht es sofort ungültig |
+| Geräte-Token | nur als SHA-256-Hash; auf dem Gerät: macOS Datei nur für den Benutzer lesbar (kein Schlüsselbund), Windows Anmeldeinformationsverwaltung | Aufheben macht es sofort ungültig |
 | SMTP-Passwort | | mit `TICKLY_SECRET` verschlüsselt |
 | Protokoll | Zeit, Benutzer, **IP-Adresse**, Land, Browser, Ereignis | nur Administratoren; Löschung nach `LOG_RETENTION_DAYS` |
 | Sitzungen | zufällige Kennung, IP, Land, Browser | Beenden jederzeit |

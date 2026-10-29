@@ -4,7 +4,7 @@ Tauri-2-App (Rust + React). Sitzt im Tray bzw. in der Menüleiste und meldet dem
 
 ## Aufbau
 
-- `src-tauri/` – Rust: Tray, Fenster, Schlüsselbund, Tracking-Schleife (alle 2 s). Die eigentliche Logik steckt in den Crates [`tickly-agent`](../../crates/agent) (Ereignisse, Outbox, Senden) und [`tickly-platform`](../../crates/platform) (Systemzugriff).
+- `src-tauri/` – Rust: Tray, Fenster, Token-Ablage, Tracking-Schleife (alle 2 s). Die eigentliche Logik steckt in den Crates [`tickly-agent`](../../crates/agent) (Ereignisse, Outbox, Senden) und [`tickly-platform`](../../crates/platform) (Systemzugriff).
 - `src/` – React: Kopplung, Status, Rückfrage „Arbeitest du gerade?“, Stoppen/Fortsetzen.
 
 ## Entwickeln und bauen
@@ -28,7 +28,7 @@ Installer für beide Systeme entstehen beim Release (`.github/workflows/release.
 - **Sperre** wird auf macOS über die Sitzungsdaten (`CGSSessionScreenIsLocked`), auf Windows über den Secure Desktop erkannt. Ein Ruhezustand zählt wie eine Sperre.
 - **Aktive App:** nur der Name, nie Fenstertitel. Apps aus der Liste „Ausgeschlossene Apps“ gehen als „Sonstiges“ raus.
 - **Autostart** folgt der Einstellung in der Weboberfläche („Mit Windows/macOS starten“).
-- Datenschutz: Das Token liegt im Schlüsselbund (macOS) bzw. in der Anmeldeinformationsverwaltung (Windows). Nur wenn das nicht verfügbar ist, in einer Datei, die nur der Benutzer lesen kann.
+- Datenschutz: Das Token liegt unter macOS in einer Datei, die nur der Benutzer lesen kann (der Schlüsselbund wird bewusst nicht benutzt), unter Windows in der Anmeldeinformationsverwaltung.
 
 ## Rechte
 
