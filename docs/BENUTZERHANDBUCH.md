@@ -51,7 +51,7 @@ Bis du antwortest, läuft die Zeit weiter. Nichts wird von selbst beendet.
 ![Tagesansicht](screenshots/03-tagesansicht.png)
 
 - **Zeitverlauf:** oben Status (aktiv/gesperrt/aus), unten die aktive App. Beim Daraufzeigen: Dauer, Zeit, Notiz.
-- **Ereignisse:** Start, Sperre, Pause, Beenden … Mit dem Schalter **Programmwechsel** blendest du jeden Wechsel der Anwendung ein.
+- **Ereignisse:** Start, Sperre, Pause, Beenden … Die neuesten stehen oben. Mit dem Schalter **Programmwechsel** blendest du jeden Wechsel der Anwendung ein.
 - **Wie die Zeit berechnet wird:** Brutto, gesperrte Zeit, als Pause gewertet, gesetzliche Mindestpause, abgezogen, gezählte Arbeitszeit.
 - Mit den Pfeilen oder dem Datumsfeld (`TT.MM.JJJJ`) wechselst du den Tag.
 

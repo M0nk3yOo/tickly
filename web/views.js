@@ -494,7 +494,7 @@ function vDay() {
   const baseEvents = isToday ? S.day.events : histEvents(date);
   // Programmwechsel aus dem Zeitverlauf, auf Wunsch eingeblendet
   const switches = S.showSwitches ? (segs || []).filter(g => g.kind === 'app').map(g => ({ t: g.from, k: 'app', txt: `Wechsel zu ${appName(g.app)}${g.to != null ? ` · ${dur(g.to - g.from)}` : ''}` })) : [];
-  const events = baseEvents.concat(switches).sort((a, b) => a.t - b.t);
+  const events = baseEvents.concat(switches).sort((a, b) => a.t - b.t).reverse(); // neueste zuerst (bei gleicher Minute bleibt die Reihenfolge der Ereignisse, umgekehrt)
   const iconFor = EVICON;
   const dayDiff = s.diffLive;
   return `<div class="stack">${nav}

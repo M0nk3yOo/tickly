@@ -1,5 +1,9 @@
 # Änderungen
 
+## Unveröffentlicht
+
+- **Tagesansicht:** Die Ereignisse stehen jetzt mit den neuesten oben.
+
 ## 0.9.9
 
 Aktualisierung von 0.9.8: keine Änderungen an der Konfiguration oder Datenbank nötig.
