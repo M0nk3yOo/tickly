@@ -1,5 +1,9 @@
 # Änderungen
 
+## Unveröffentlicht
+
+- **Companion:** Die angezeigte Zeit sprang gelegentlich vor und wieder zurück. Ursache war die Anzeige, nicht die Aufzeichnung: Der Companion rechnete mit der Uhrzeit des letzten Ticks, das Fenster zählte aber ab dem Eintreffen der Meldung weiter. Dauerte eine Übertragung zum Server länger, entstand ein Versatz in Höhe dieser Dauer. Jetzt rechnet der Companion die Anzeige zum Abfragezeitpunkt und das Fenster zählt von diesem Bezugszeitpunkt aus weiter. Aufgezeichnet wird weiterhin nur vom Companion; der Server wendet dessen Ereignisse an und rechnet nicht parallel mit.
+
 ## 0.9.5
 
 Aktualisierung von 0.9.4: keine Änderungen an der Konfiguration oder Datenbank nötig.

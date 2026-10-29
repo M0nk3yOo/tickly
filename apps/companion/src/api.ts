@@ -28,6 +28,8 @@ export interface View {
   estimated: boolean;
   locked: boolean;
   app: string | null;
+  /** Zeitpunkt (Unix-ms), auf den sich state.counted bezieht */
+  asOf: number;
   state: ServerState;
 }
 
@@ -53,7 +55,7 @@ const mock: { s: UiState } = {
     version: "0.9.5",
     os: "windows",
     view: {
-      connected: new URLSearchParams(location.search).get("offline") !== "1", unauthorized: false, error: null, pending: new URLSearchParams(location.search).get("offline") === "1" ? 14 : 0, estimated: new URLSearchParams(location.search).get("offline") === "1", locked: false, app: "VS Code",
+      connected: new URLSearchParams(location.search).get("offline") !== "1", unauthorized: false, error: null, pending: new URLSearchParams(location.search).get("offline") === "1" ? 14 : 0, estimated: new URLSearchParams(location.search).get("offline") === "1", locked: false, app: "VS Code", asOf: Date.now(),
       state: {
         track: (new URLSearchParams(location.search).get("track") as Track) || "running", tracking: true, start: 472, since: 842,
         counted: 357, soll: 480, diff: -123, balance: 1193, windowActive: true, dayOff: false, holiday: null,

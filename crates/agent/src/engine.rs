@@ -41,6 +41,9 @@ pub struct View {
     pub estimated: bool,
     pub locked: bool,
     pub app: Option<String>,
+    /// Zeitpunkt (Unix-Millisekunden), auf den sich `state.counted` bezieht. Die Oberfläche zählt von hier aus weiter,
+    /// damit die Anzeige nicht von der Dauer einer Übertragung abhängt.
+    pub as_of: i64,
     pub state: ServerState,
 }
 
@@ -124,8 +127,14 @@ impl<T: Transport> Engine<T> {
     }
 
     pub fn view(&self) -> View {
+        self.view_at(self.clock)
+    }
+
+    /// Anzeige für den Zeitpunkt `at` (die Oberfläche fragt mit der aktuellen Uhrzeit, nicht mit der des letzten Ticks:
+    /// ein Tick mit langsamer Übertragung würde sonst die Zeit zurückspringen lassen).
+    pub fn view_at(&self, at: DateTime<Utc>) -> View {
         let mut st = self.state.clone();
-        let (date, now) = self.local(self.clock);
+        let (date, now) = self.local(at);
         if let Some(d) = &self.day {
             let s = self.settings();
             let k = calc_segs(&resolve(&d.segs, now), &s);
@@ -144,7 +153,7 @@ impl<T: Transport> Engine<T> {
         } else {
             st.track = "stopped".into();
         }
-        View { connected: self.connected, unauthorized: self.unauthorized, error: self.error.clone(), pending: self.outbox.len(), estimated: !self.connected, locked: self.locked, app: self.app.clone(), state: st }
+        View { connected: self.connected, unauthorized: self.unauthorized, error: self.error.clone(), pending: self.outbox.len(), estimated: !self.connected, locked: self.locked, app: self.app.clone(), as_of: at.timestamp_millis(), state: st }
     }
 
     /// Companion gestartet (Anmeldung am Rechner oder manueller Start).
@@ -437,6 +446,18 @@ mod tests {
         e.tick(t(8));
         assert_eq!(kinds(&w), ["boot", "app:Code", "app:Google Chrome"]);
         assert_eq!(e.view().app.as_deref(), Some("Google Chrome"));
+    }
+
+    #[test]
+    fn the_view_follows_the_clock_it_is_asked_for() {
+        let (mut e, _w) = setup();
+        e.start(t(0), false);
+        e.tick(t(60));
+        assert_eq!(e.view().state.track, "running");
+        // Die Anzeige hängt nicht am letzten Tick: wer später fragt, bekommt die spätere Zeit, mit passendem Bezugszeitpunkt
+        let (a, b) = (e.view_at(t(60)), e.view_at(t(65)));
+        assert_eq!(b.as_of - a.as_of, 5000);
+        assert!((b.state.counted - a.state.counted - 5.0 / 60.0).abs() < 1e-6, "{} → {}", a.state.counted, b.state.counted);
     }
 
     #[test]

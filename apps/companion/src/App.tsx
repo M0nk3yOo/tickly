@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { api, Track, UiState } from "./api";
 
 const hm = (m: number) => {
@@ -106,12 +106,10 @@ function Main({ s, set }: { s: UiState; set: (s: UiState) => void }) {
   const act = async (k: "pause" | "resume" | "answer", val?: string) => set(await api.act(k, val));
   const pct = st && st.soll > 0 ? Math.min(100, (st.counted / st.soll) * 100) : 0;
   const fresh = !st?.start;
-  // Sekunden laufen im Fenster weiter, zwischen zwei Meldungen des Servers (alle 30 s)
-  const stamp = useRef(Date.now());
+  // Die Sekunden laufen im Fenster weiter, ausgehend vom Zeitpunkt der Berechnung (nicht vom Eintreffen der Meldung)
   const [, setTick] = useState(0);
-  useEffect(() => { stamp.current = Date.now(); }, [s]);
   useEffect(() => { const t = setInterval(() => setTick((n) => n + 1), 1000); return () => clearInterval(t); }, []);
-  const live = (st?.counted ?? 0) + (track === "running" ? (Date.now() - stamp.current) / 60000 : 0);
+  const live = (st?.counted ?? 0) + (track === "running" && v ? Math.max(0, Date.now() - v.asOf) / 60000 : 0);
   return (
     <>
       <Header s={s} />

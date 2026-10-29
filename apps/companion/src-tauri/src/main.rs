@@ -44,7 +44,7 @@ struct UiState {
 
 fn ui_state(sh: &Shared) -> UiState {
     let c = sh.creds.lock().unwrap().clone();
-    let view = sh.engine.lock().unwrap().as_ref().map(|e| e.view());
+    let view = sh.engine.lock().unwrap().as_ref().map(|e| e.view_at(Utc::now()));
     UiState {
         paired: c.is_some(),
         server: c.as_ref().map(|c| c.server.clone()).unwrap_or_default(),
