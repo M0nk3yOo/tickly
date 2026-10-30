@@ -31,13 +31,14 @@ pub struct Policy {
     pub track_apps: bool,
     pub track_lock: bool,
     pub excluded: Vec<String>,
-    pub autostart: bool,
     pub auto_track: AutoTrackPolicy,
+    /// Das Tracking darf auf diesem Gerät von selbst starten (Einstellung je Gerät).
+    pub device_auto: bool,
 }
 
 impl Default for Policy {
     fn default() -> Self {
-        Policy { track_apps: true, track_lock: true, excluded: vec![], autostart: true, auto_track: AutoTrackPolicy::default() }
+        Policy { track_apps: true, track_lock: true, excluded: vec![], auto_track: AutoTrackPolicy::default(), device_auto: true }
     }
 }
 
@@ -126,4 +127,8 @@ pub enum TransportError {
 pub trait Transport: Send {
     fn send(&mut self, batch: &[QueuedEvent], timeout: Duration) -> Result<Reply, TransportError>;
     fn state(&mut self, timeout: Duration) -> Result<ServerState, TransportError>;
+    /// Stellt für dieses Gerät ein, ob das Tracking von selbst startet; liefert den neuen Zustand.
+    fn set_auto_track(&mut self, _on: bool, _timeout: Duration) -> Result<ServerState, TransportError> {
+        Err(TransportError::Server("Wird von dieser Verbindung nicht unterstützt".into()))
+    }
 }

@@ -202,7 +202,7 @@ pub enum Stop {
     Quit,
     /// Rechner herunterfahren/neu starten, während getrackt wurde: wird beim nächsten Start fortgesetzt.
     Shutdown,
-    /// Im Companion manuell gestoppt, die App läuft weiter.
+    /// Im Companion manuell pausiert, die App läuft weiter.
     Pause,
     /// Companion läuft, fragt ob gearbeitet wird.
     Ask,

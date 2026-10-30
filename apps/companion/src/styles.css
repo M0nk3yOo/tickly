@@ -44,3 +44,12 @@ input.code { font-size: 22px; letter-spacing: 0.14em; text-align: center; font-v
 .callout.bad { border-color: color-mix(in oklab, var(--bad) 45%, var(--line)); }
 .ask { padding: 14px; border-radius: 12px; border: 1px solid color-mix(in oklab, var(--warn) 50%, var(--line)); background: color-mix(in oklab, var(--warn) 10%, var(--bg)); display: flex; flex-direction: column; gap: 10px; }
 .foot { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; }
+.opts { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; }
+.opt { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; font-size: 13px; font-weight: 600; color: var(--ink); cursor: pointer; flex-direction: row; }
+.opt + .opt { border-top: 1px solid var(--line); }
+.opt small { display: block; font-weight: 400; font-size: 12px; color: var(--muted); margin-top: 2px; line-height: 1.35; }
+.switch { appearance: none; -webkit-appearance: none; width: 40px; height: 23px; padding: 0; border-radius: 99px; background: var(--line); border: 0; position: relative; flex: none; transition: 0.15s; cursor: pointer; }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 17px; height: 17px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); transition: 0.15s; }
+.switch.on { background: var(--brand); }
+.switch.on::after { left: 20px; }
+.switch:disabled { opacity: 0.5; cursor: default; }

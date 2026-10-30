@@ -19,7 +19,7 @@ export interface ServerState {
   deviceClash?: { starter: string; other: string } | null;
   mfa?: { required: boolean; compliant: boolean; daysLeft: number | null; expired: boolean } | null;
   settings?: { theme?: "system" | "light" | "dark" } | null;
-  policy: { autostart: boolean; trackApps: boolean; trackLock: boolean; autoTrack: { enabled: boolean; ask: boolean } };
+  policy: { trackApps: boolean; trackLock: boolean; autoTrack: { enabled: boolean; ask: boolean }; deviceAuto: boolean };
 }
 
 export interface View {
@@ -42,6 +42,8 @@ export interface UiState {
   userName: string;
   version: string;
   os: string;
+  /** Startet der Companion mit dem Rechner? (Einstellung dieses Rechners, nicht des Servers) */
+  autostart: boolean;
   view: View | null;
 }
 
@@ -54,14 +56,15 @@ const mock: { s: UiState } = {
     server: "https://zeit.example.com",
     deviceName: "DESKTOP-ANDRE",
     userName: "André Becker",
-    version: "0.9.10",
+    version: "0.9.11",
     os: "windows",
+    autostart: true,
     view: {
       connected: new URLSearchParams(location.search).get("offline") !== "1", unauthorized: false, error: null, pending: new URLSearchParams(location.search).get("offline") === "1" ? 14 : 0, estimated: new URLSearchParams(location.search).get("offline") === "1", locked: false, app: "VS Code", asOf: Date.now(),
       state: {
         track: (new URLSearchParams(location.search).get("track") as Track) || "running", tracking: true, start: 472, since: 842,
         counted: 357, soll: 480, diff: -123, balance: 1193, windowActive: true, dayOff: false, holiday: null,
-        policy: { autostart: true, trackApps: true, trackLock: true, autoTrack: { enabled: true, ask: true } },
+        policy: { trackApps: true, trackLock: true, autoTrack: { enabled: true, ask: true }, deviceAuto: true },
       },
     },
   },
@@ -72,7 +75,10 @@ export const api = {
   pair: (server: string, code: string): Promise<UiState> => (inTauri ? invoke("pair", { server, code }) : Promise.resolve(mock.s)),
   unpair: (): Promise<UiState> => (inTauri ? invoke("unpair") : Promise.resolve({ ...mock.s, paired: false })),
   act: (kind: "pause" | "resume" | "answer", value?: string): Promise<UiState> => (inTauri ? invoke("act", { kind, value }) : Promise.resolve(mock.s)),
-  dashboard: (): Promise<void> => (inTauri ? invoke("open_dashboard") : Promise.resolve()),
+  /** Weboberfläche im Browser öffnen, auf Wunsch gleich die Einstellungen */
+  dashboard: (page?: "settings"): Promise<void> => (inTauri ? invoke("open_dashboard", { page }) : Promise.resolve()),
+  setAutostart: (on: boolean): Promise<UiState> => (inTauri ? invoke("set_autostart", { on }) : Promise.resolve({ ...mock.s, autostart: on })),
+  setAutoTrack: (on: boolean): Promise<UiState> => (inTauri ? invoke("set_auto_track", { on }) : Promise.resolve(mock.s)),
   quit: (): Promise<void> => (inTauri ? invoke("quit_app") : Promise.resolve()),
   onState: (f: (s: UiState) => void): Promise<() => void> => (inTauri ? listen<UiState>("state", (e) => f(e.payload)) : Promise.resolve(() => {})),
 };

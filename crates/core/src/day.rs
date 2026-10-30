@@ -26,7 +26,7 @@ pub fn app_glyph(key: &str) -> &'static str {
 pub enum Track {
     Running,
     Locked,
-    /// Im Companion manuell gestoppt, die App läuft.
+    /// Im Companion manuell pausiert, die App läuft.
     Paused,
     /// Rückfrage „Arbeitest du gerade?“ offen.
     Asking,
@@ -221,7 +221,7 @@ impl DayState {
 
     pub fn lock(&mut self, now: f64) -> Result<(), &'static str> {
         if self.track() != Track::Running {
-            return Err("Bildschirm ist bereits gesperrt oder Tracking gestoppt.");
+            return Err("Bildschirm ist bereits gesperrt oder das Tracking pausiert.");
         }
         self.close_open(now);
         self.segs.push(Seg { from: now, to: None, kind: SegKind::Locked, app: None, note: None });
@@ -250,7 +250,7 @@ impl DayState {
         self.tracking = false;
         self.ended = Some(now);
         self.stop = Some(Stop::Pause);
-        self.ev(now, "pause", "Tracking im Companion gestoppt · Pause wird nicht gezählt".into());
+        self.ev(now, "pause", "Tracking im Companion pausiert · Pause wird nicht gezählt".into());
         Ok(())
     }
 
@@ -334,7 +334,7 @@ impl DayState {
 
     /// Companion richtig beendet (nicht nur das Fenster geschlossen): Arbeitsende.
     pub fn quit(&mut self, now: f64) -> Result<(), &'static str> {
-        self.end_session(now, Stop::Quit, "Companion beendet (nicht nur Fenster) · Tracking gestoppt · Arbeitsende")
+        self.end_session(now, Stop::Quit, "Companion beendet (nicht nur Fenster) · Tracking beendet · Arbeitsende")
     }
 
     /// Rechner fährt herunter oder startet neu. Lief das Tracking, wird es nach dem nächsten Start fortgesetzt.

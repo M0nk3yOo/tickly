@@ -22,13 +22,13 @@
 - **Ring:** Heute gezählte Arbeitszeit (mit Sekunden) im Verhältnis zum Tagessoll. Läuft sie, zählt die Anzeige mit.
 - **Arbeitsbeginn, Brutto, Pause, voraussichtliches Ende:** Das Ende ergibt sich, wenn du ab jetzt durcharbeitest.
 - **Wochen-/Monatssaldo, Überstundenkonto:** Feiertage, Urlaub und Krankheit senken das Soll auf 0 – sie erzeugen kein Minus. Zeitausgleich baut Überstunden bewusst ab.
-- **Pause/Fortsetzen:** Hält die Zeiterfassung an (die Pause zählt nicht, der Tag bleibt offen).
+- **Pausieren/Fortsetzen:** Hält die Zeiterfassung an (die Pause zählt nicht, der Tag bleibt offen). Das geht im Companion; im Web siehst du den Zustand und setzt ein pausiertes Tracking fort.
 - **Tracking beenden:** Beendet den Arbeitstag. Vorher zeigt Tickly, **zu welchem Zeitpunkt** beendet wird und was das bedeutet: Brutto (Anwesenheit), Pause und Netto. **Ende festlegen …** beendet mit einer eigenen Uhrzeit, zum Beispiel wenn du es vergessen hast: Alles nach diesem Zeitpunkt wird nicht gezählt, und die Vorschau rechnet Brutto und Netto für die gewählte Zeit aus. Das Ende liegt zwischen Arbeitsbeginn und jetzt. Liegt es in einer Pause, endet die Arbeitszeit am Beginn der Pause. Für frühere Tage nutzt du *Tagesansicht → Zeiten bearbeiten*.
 - Normalerweise machst du nichts davon: Der **Companion** startet das Tracking automatisch und beendet es beim Herunterfahren.
 
 ### Nur im Web erfassen (ohne Companion)
 
-Du brauchst den Companion nicht. Auf der Übersicht startest du mit **Im Web starten** und beendest mit **Tracking beenden**. Der Hinweis „Companion nicht aktiv“ bleibt stehen, er ist dann nur eine Information. Beachte: Ohne Companion weiß Tickly nicht, ob du am Rechner bist. Das Tracking läuft, bis du es beendest (über Mitternacht läuft es weiter). Deshalb:
+Du brauchst den Companion nicht. Auf der Übersicht startest du mit **Tracking starten** und beendest mit **Tracking beenden**. Der Hinweis „Tracking beendet“ bleibt zwischendurch stehen, er ist dann nur eine Information. Beachte: Ohne Companion weiß Tickly nicht, ob du am Rechner bist. Das Tracking läuft, bis du es beendest (über Mitternacht läuft es weiter). Deshalb:
 - Läuft das Tracking **länger als 10 Stunden** (Brutto), erscheint ein Hinweis auf der Übersicht und du bekommst eine **Mail** („Läuft dein Tracking noch?“), höchstens einmal am Tag. Der Administrator kann die Grenze ändern oder abschalten.
 
 ### Läuft das Tracking über Nacht?
@@ -82,7 +82,7 @@ Urlaub, Krankheit, Zeitausgleich im Kalender eintragen. Wochenenden und Feiertag
 - **Arbeitszeit:** Tagessoll je Wochentag (mit Vorlagen), Brutto/Netto.
 - **Zeiterfassung:** automatische Pausenregeln (z. B. ab 6 h 30 Min.), gesperrte Zeit als Pause werten, Mindestdauer.
 - **Feiertage:** Bundesland und **weitere freie Tage** (Rosenmontag, Heiligabend, Silvester, eigene).
-- **Tracking & Datenschutz:** automatischer Start nach **Zeitfenstern**, Rückfrage außerhalb, App-Erfassung, ausgeschlossene Apps, Export.
+- **Tracking & Datenschutz:** automatischer Start nach **Zeitfenstern**, Rückfrage außerhalb, App-Erfassung, ausgeschlossene Apps, Export. Ob der Companion **mit dem Rechner startet**, stellst du im Companion selbst ein, ob das Tracking auf einem Gerät **von selbst startet**, im Companion oder unter *Companion-App* beim Gerät.
 - **Profil:** Name, E-Mail, **Darstellung** (System/Hell/Dunkel).
 
 ![Tracking-Einstellungen](screenshots/09-einstellungen-tracking.png)
@@ -90,8 +90,9 @@ Urlaub, Krankheit, Zeitausgleich im Kalender eintragen. Wochenenden und Feiertag
 ### Wie Zeitfenster und Rückfrage zusammenspielen
 
 - Startet der Rechner **in einem Zeitfenster** (nicht an Feiertagen/Urlaub), beginnt das Tracking von selbst.
-- Sonst fragt der Companion **„Arbeitest du gerade?“**. *Ja, starten* beginnt jetzt, *ab Rechnerstart* rechnet rückwirkend, *Nein* lässt es aus – bis das nächste Zeitfenster beginnt.
-- Ein bewusstes **Stoppen** wird nie von einem Zeitfenster überstimmt.
+- Sonst fragt der Companion **„Arbeitest du gerade?“**. *Ja, Tracking starten* beginnt jetzt, *ab Rechnerstart* rechnet rückwirkend, *Nein* lässt es aus – bis das nächste Zeitfenster beginnt.
+- Ein bewusstes **Pausieren** wird nie von einem Zeitfenster überstimmt.
+- Ist **Tracking automatisch starten** für ein Gerät aus, beginnt das Tracking dort nie von selbst: der Companion fragt (je nach Einstellung) oder wartet, bis du es startest. Ein Gerät, das schon lief, setzt das Tracking nach einem Neustart trotzdem fort.
 - Lief das Tracking beim Herunterfahren/Neustart, geht es danach immer weiter.
 
 ## Dunkelmodus

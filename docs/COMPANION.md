@@ -46,18 +46,23 @@ Unbeaufsichtigte Einrichtung (z. B. per Skript): Umgebungsvariable `TICKLY_PAIR=
 
 | Situation | Was passiert |
 |---|---|
-| Rechner startet | Companion startet mit (einstellbar), meldet den Start. Im Zeitfenster beginnt das Tracking von selbst, sonst fragt er: **„Arbeitest du gerade?“** |
+| Rechner startet | Companion startet mit (einstellbar im Fenster), meldet den Start. Im Zeitfenster beginnt das Tracking von selbst (je Gerät abschaltbar), sonst fragt er: **„Arbeitest du gerade?“** |
 | Fenster schließen (✕) | Nur ausblenden, der Companion läuft weiter im Infobereich bzw. in der Menüleiste. |
-| **Beenden** (Tray-Menü, Cmd+Q) | Tracking stoppt, das **Arbeitsende** wird gesetzt. |
+| **Beenden** (Tray-Menü, Cmd+Q) | Das Tracking endet, das **Arbeitsende** wird gesetzt. |
 | Neustart/Herunterfahren während Tracking | Wird gemeldet; nach dem nächsten Start läuft das Tracking **von selbst weiter** (die Zeit dazwischen zählt nicht). |
 | Absturz, Stromausfall | Die Erfassung endet beim letzten Lebenszeichen (alle 30 s); beim nächsten Start geht es weiter. |
 | Bildschirm gesperrt, Ruhezustand | Wird als gesperrt erfasst (zählt als Pause, wenn länger als die eingestellte Mindestdauer). |
-| **Stoppen** im Fenster/Tray | Pause, der Tag bleibt offen, die Pause zählt nicht. Fortsetzen mit einem Klick. |
+| **Tracking pausieren** im Fenster/Tray | Pause, der Tag bleibt offen, die Pause zählt nicht. **Tracking fortsetzen** mit einem Klick. |
 | Keine Verbindung | Alles läuft weiter, die Ereignisse werden gespeichert und später übertragen; das Überstundenkonto ist dann geschätzt. |
 
 Aktive App: Es wird nur der **Programmname** erfasst. Apps aus der Liste „Ausgeschlossene Apps“ (z. B. Passwortmanager) werden als „Sonstiges“ gemeldet. Fenstertitel werden nie gelesen oder gesendet.
 
-Einstellungen (Zeitfenster, Autostart, ausgeschlossene Apps, Pausenregeln) nimmst du in der **Weboberfläche** vor; der Companion übernimmt sie automatisch.
+Zwei Einstellungen gelten nur für **diesen Rechner** und stehen im Companion-Fenster:
+
+- **Mit Windows/macOS starten:** Der Companion startet beim Hochfahren und erkennt so den Arbeitsbeginn. Nach der Kopplung ist es eingeschaltet.
+- **Tracking automatisch starten:** Aus, wenn das Tracking auf diesem Rechner nie von selbst beginnen soll (zum Beispiel auf einem privaten Rechner, der auch gekoppelt ist). Der Companion fragt dann wie außerhalb der Zeitfenster nach, oder du startest das Tracking selbst. Die Einstellung braucht eine Verbindung zum Server und steht auch in der Weboberfläche unter *Companion-App* bei jedem Gerät.
+
+Alles andere (Zeitfenster, ausgeschlossene Apps, Pausenregeln) nimmst du in der **Weboberfläche** vor; der Companion übernimmt es automatisch. Der Knopf **Einstellungen** im Companion-Fenster (und im Tray-Menü) öffnet die Weboberfläche gleich bei den Einstellungen.
 
 ## Daten auf dem Rechner
 

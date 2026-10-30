@@ -16,10 +16,10 @@ const signed = (m: number) => (Math.round(m) === 0 ? "±0:00" : `${m > 0 ? "+" :
 const LABEL: Record<string, { text: string; tone: "good" | "warn" | "bad" }> = {
   running: { text: "Tracking läuft", tone: "good" },
   locked: { text: "Rechner gesperrt", tone: "warn" },
-  paused: { text: "Tracking gestoppt", tone: "warn" },
+  paused: { text: "Tracking pausiert", tone: "warn" },
   asking: { text: "Rückfrage", tone: "warn" },
   idle: { text: "Tracking aus", tone: "bad" },
-  stopped: { text: "Companion nicht aktiv", tone: "bad" },
+  stopped: { text: "Tracking beendet", tone: "bad" },
 };
 
 export function App() {
@@ -104,6 +104,15 @@ function Main({ s, set }: { s: UiState; set: (s: UiState) => void }) {
   const track = (st?.track || "") as Track;
   const running = track === "running" || track === "locked";
   const act = async (k: "pause" | "resume" | "answer", val?: string) => set(await api.act(k, val));
+  const [err, setErr] = useState("");
+  const change = async (f: () => Promise<UiState>) => {
+    setErr("");
+    try {
+      set(await f());
+    } catch (e) {
+      setErr(String(e));
+    }
+  };
   const pct = st && st.soll > 0 ? Math.min(100, (st.counted / st.soll) * 100) : 0;
   const fresh = !st?.start;
   // Die Sekunden laufen im Fenster weiter, ausgehend vom Zeitpunkt der Berechnung (nicht vom Eintreffen der Meldung)
@@ -152,7 +161,7 @@ function Main({ s, set }: { s: UiState; set: (s: UiState) => void }) {
             <h2>Arbeitest du gerade?</h2>
             <p>Der Rechner läuft außerhalb deiner automatischen Zeitfenster. Soll die Zeiterfassung laufen?</p>
             <div className="row">
-              <button className="btn primary" onClick={() => act("answer", "work")}>Ja, starten</button>
+              <button className="btn primary" onClick={() => act("answer", "work")}>Ja, Tracking starten</button>
               {fresh && <button className="btn" onClick={() => act("answer", "boot")}>Ja, ab Rechnerstart</button>}
               <button className="btn" onClick={() => act("answer", "no")}>Nein</button>
             </div>
@@ -183,22 +192,42 @@ function Main({ s, set }: { s: UiState; set: (s: UiState) => void }) {
         {v?.error && v.connected && !v.unauthorized && <div className="callout warn">{v.error}</div>}
         <div className="row">
           {running ? (
-            <button className="btn grow" onClick={() => act("pause")}>Tracking stoppen</button>
+            <button className="btn grow" onClick={() => act("pause")}>Tracking pausieren</button>
           ) : (
-            track !== "asking" && <button className="btn primary grow" onClick={() => act("resume")}>{track === "paused" ? "Fortsetzen" : "Tracking starten"}</button>
+            track !== "asking" && <button className="btn primary grow" onClick={() => act("resume")}>{track === "paused" ? "Tracking fortsetzen" : "Tracking starten"}</button>
           )}
-          <button className="btn" onClick={() => api.dashboard()}>Dashboard</button>
         </div>
+        <div className="row">
+          <button className="btn grow" onClick={() => api.dashboard()}>Dashboard</button>
+          <button className="btn grow" onClick={() => api.dashboard("settings")}>Einstellungen</button>
+        </div>
+        <div className="opts">
+          <label className="opt">
+            <span>
+              Mit {s.os === "macos" ? "macOS" : "Windows"} starten
+              <small>Der Arbeitsbeginn wird beim Hochfahren automatisch erkannt.</small>
+            </span>
+            <button type="button" role="switch" aria-checked={s.autostart} className={`switch ${s.autostart ? "on" : ""}`} onClick={() => change(() => api.setAutostart(!s.autostart))} />
+          </label>
+          <label className="opt">
+            <span>
+              Tracking automatisch starten
+              <small>Beim Start in einem Zeitfenster (Einstellungen) startet das Tracking auf diesem Gerät von selbst. Aus: Du startest es selbst.</small>
+            </span>
+            <button type="button" role="switch" aria-checked={st?.policy.deviceAuto ?? true} className={`switch ${st?.policy.deviceAuto ?? true ? "on" : ""}`} disabled={!v?.connected} title={v?.connected ? undefined : "Braucht eine Verbindung zum Server"} onClick={() => change(() => api.setAutoTrack(!(st?.policy.deviceAuto ?? true)))} />
+          </label>
+        </div>
+        {err && <div className="callout bad">{err}</div>}
         <div className="foot">
           <div className="muted xs">
             {s.userName} · {s.deviceName} · {s.os === "macos" ? "macOS" : "Windows"}<br />
-            Version {s.version} · {st?.policy.autostart ? "startet mit dem Rechner" : "startet nicht automatisch"}
+            Version {s.version}
           </div>
           <div className="row">
             <button className="btn sm danger" onClick={() => api.quit()}>Beenden</button>
           </div>
         </div>
-        <p className="muted xs">Fenster schließen (✕) lässt den Companion im Hintergrund weiterlaufen. <b>Beenden</b> stoppt die Zeiterfassung.</p>
+        <p className="muted xs">Fenster schließen (✕) lässt den Companion im Hintergrund weiterlaufen. <b>Beenden</b> beendet das Tracking.</p>
       </div>
     </>
   );

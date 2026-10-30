@@ -10,7 +10,7 @@ use chrono::{DateTime, Datelike, Duration as Cd, NaiveDate, Timelike, Utc};
 use chrono_tz::Tz;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, time::Duration};
-use tickly_core::{apply_event, calc_segs, policy_for, resolve, DayState, Settings, Track};
+use tickly_core::{apply_event, calc_segs, policy_for, resolve, DayState, Policy, Settings, Track};
 use tickly_platform::{Platform, SysEvent};
 
 /// Abstand der Lebenszeichen. Daraus ergibt sich bei einem Absturz das Ende der Zeiterfassung.
@@ -153,7 +153,7 @@ impl<T: Transport> Engine<T> {
             st.counted = k.counted;
             st.soll = soll;
             st.diff = k.counted - soll;
-            st.window_active = policy_for(&s.auto_track, st.day_off, date, now).auto_from.is_some();
+            st.window_active = self.policy(st.day_off, date, now).auto_from.is_some();
         } else {
             st.track = "stopped".into();
         }
@@ -241,6 +241,30 @@ impl<T: Transport> Engine<T> {
         }
     }
 
+    /// Wann das Tracking von selbst startet: Zeitfenster des Benutzers, aber nur, wenn es auf diesem Gerät erlaubt ist.
+    fn policy(&self, off: bool, date: NaiveDate, now: f64) -> Policy {
+        let mut p = policy_for(&self.settings().auto_track, off, date, now);
+        if !self.state.policy.device_auto {
+            p.auto_from = None;
+        }
+        p
+    }
+
+    /// Stellt ein, ob das Tracking auf diesem Gerät von selbst startet (gilt gleich auf dem Server und für künftige Rechnerstarts).
+    pub fn set_auto_track(&mut self, now: DateTime<Utc>, on: bool) -> Result<(), String> {
+        self.clock = now;
+        match self.transport.set_auto_track(on, Duration::from_secs(8)) {
+            Ok(s) => {
+                self.error = None;
+                self.set_state(s, self.outbox.is_empty());
+                Ok(())
+            }
+            Err(TransportError::Offline(_)) => Err("Der Server ist nicht erreichbar. Die Einstellung braucht eine Verbindung.".into()),
+            Err(TransportError::Unauthorized) => Err("Die Kopplung wurde aufgehoben.".into()),
+            Err(TransportError::Server(m)) => Err(m),
+        }
+    }
+
     /// Benutzeraktion aus der Oberfläche (wirkt sofort, auch ohne Verbindung).
     pub fn action(&mut self, now: DateTime<Utc>, a: Action) {
         self.clock = now;
@@ -282,7 +306,7 @@ impl<T: Transport> Engine<T> {
                 self.state.day_off = false;
             }
         }
-        let p = policy_for(&self.settings().auto_track, self.state.day_off, date, now);
+        let p = self.policy(self.state.day_off, date, now);
         match apply_event(&mut self.day, kind, now, os, &p, app.as_deref(), answer.as_deref()) {
             Ok(()) => {
                 self.outbox.push(kind, at, app, Some(self.platform.os().to_string()), answer);
@@ -624,12 +648,15 @@ mod tests {
         last_seq: i64,
         day: Option<DayState>,
         settings: Settings,
+        /// Das Tracking darf auf diesem Gerät von selbst starten
+        device_auto: bool,
     }
     impl ReplayServer {
         fn state(r: &Replay) -> ServerState {
             ServerState {
                 last_seq: r.last_seq, tz: "Europe/Berlin".into(), settings: Some(r.settings.clone()), day: r.day.clone(),
-                today: Some(NaiveDate::from_ymd_opt(2026, 10, 26).unwrap()), soll: 480.0, ..Default::default()
+                today: Some(NaiveDate::from_ymd_opt(2026, 10, 26).unwrap()), soll: 480.0,
+                policy: crate::protocol::Policy { device_auto: r.device_auto, ..Default::default() }, ..Default::default()
             }
         }
     }
@@ -642,7 +669,8 @@ mod tests {
                 r.last_seq = e.seq;
                 let l = e.at.with_timezone(&chrono_tz::Europe::Berlin);
                 let now = l.num_seconds_from_midnight() as f64 / 60.0;
-                let p = policy_for(&r.settings.auto_track, false, l.date_naive(), now);
+                let mut p = policy_for(&r.settings.auto_track, false, l.date_naive(), now);
+                if !r.device_auto { p.auto_from = None; }
                 let mut day = r.day.take();
                 let _ = apply_event(&mut day, &e.kind, now, "macOS", &p, e.app.as_deref(), e.answer.as_deref());
                 r.day = day;
@@ -654,13 +682,19 @@ mod tests {
             if !r.online { return Err(TransportError::Offline("offline".into())) }
             Ok(Self::state(&r))
         }
+        fn set_auto_track(&mut self, on: bool, _t: Duration) -> Result<ServerState, TransportError> {
+            let mut r = self.0.lock().unwrap();
+            if !r.online { return Err(TransportError::Offline("offline".into())) }
+            r.device_auto = on;
+            Ok(Self::state(&r))
+        }
     }
 
     fn replay_world(ask: bool, auto: bool) -> Arc<Mutex<Replay>> {
         let mut settings = Settings::default();
         settings.auto_track.ask = ask;
         settings.auto_track.enabled = auto;
-        Arc::new(Mutex::new(Replay { online: true, last_seq: 0, day: None, settings }))
+        Arc::new(Mutex::new(Replay { online: true, last_seq: 0, day: None, settings, device_auto: true }))
     }
     fn pc(app: &str) -> (Arc<Mutex<(Option<String>, bool)>>, Box<dyn Platform>) {
         struct P(Arc<Mutex<(Option<String>, bool)>>);
@@ -810,5 +844,40 @@ mod tests {
         run_until_from(&mut e, t, 1200);
         assert_eq!(e.view().state.track, "running", "nach Mitternacht läuft es weiter");
         assert_eq!(e.date, Some(NaiveDate::from_ymd_opt(2026, 10, 27).unwrap()));
+    }
+    /// 07:00 Uhr in Berlin, mitten im Standard-Zeitfenster (6–10 Uhr)
+    fn morning(sec: i64) -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339("2026-10-26T06:00:00Z").unwrap().with_timezone(&Utc) + Cd::seconds(sec)
+    }
+
+    #[test]
+    fn the_automatic_start_can_be_switched_off_per_device() {
+        // Eingeschaltet (Standard): der Rechnerstart im Zeitfenster startet das Tracking von selbst
+        let world = replay_world(true, true);
+        let (_pcs, platform) = pc("Code");
+        let mut e = Engine::new(platform, ReplayServer(world.clone()), Outbox::in_memory());
+        e.start(morning(0), false);
+        assert_eq!(e.view().state.track, "running");
+        assert!(e.view().state.window_active);
+
+        // Für dieses Gerät ausgeschaltet: derselbe Rechnerstart im Zeitfenster fragt nur nach
+        let world = replay_world(true, true);
+        world.lock().unwrap().device_auto = false;
+        let (_pcs, platform) = pc("Code");
+        let mut e = Engine::new(platform, ReplayServer(world.clone()), Outbox::in_memory());
+        e.start(morning(0), false);
+        assert_eq!(e.view().state.track, "asking", "ohne Auto-Start läuft das Tracking nicht von selbst an");
+        assert!(!e.view().state.window_active);
+
+        // Das Gerät stellt es selbst wieder an: der Server übernimmt es, die Anzeige folgt sofort
+        e.set_auto_track(morning(1), true).unwrap();
+        assert!(world.lock().unwrap().device_auto);
+        assert!(e.view().state.window_active);
+        e.set_auto_track(morning(2), false).unwrap();
+        assert!(!world.lock().unwrap().device_auto && !e.view().state.window_active);
+
+        // Ohne Verbindung lässt sich die Einstellung nicht ändern, und das wird gesagt
+        world.lock().unwrap().online = false;
+        assert!(e.set_auto_track(morning(3), true).is_err());
     }
 }

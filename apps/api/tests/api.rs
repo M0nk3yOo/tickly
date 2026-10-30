@@ -62,6 +62,7 @@ async fn fresh_db(demo: bool) -> String {
         include_str!("../migrations/0011_start_balance.sql").hash(&mut h);
         include_str!("../migrations/0012_night_alerts.sql").hash(&mut h);
         include_str!("../migrations/0013_device_clash.sql").hash(&mut h);
+        include_str!("../migrations/0014_device_auto_track.sql").hash(&mut h);
         include_str!("../migrations/0006_sessions_info.sql").hash(&mut h);
         include_str!("../migrations/0007_backup_kinds.sql").hash(&mut h);
         include_str!("../src/db.rs").hash(&mut h);
@@ -2173,6 +2174,59 @@ async fn a_second_companion_starting_tracking_triggers_a_warning() {
     assert!(c.get("/api/today").await.1["deviceClash"].is_null());
     let (_, s) = b.call_h(Method::GET, "/api/device/state", None, Some(&tb)).await;
     assert!(s["deviceClash"].is_null());
+}
+
+#[tokio::test]
+async fn the_automatic_tracking_start_can_be_switched_off_per_device() {
+    let mut c = Client::real().await;
+    assert_eq!(c.login("chef@example.de", "Sehr-Langes-Passwort-42").await, StatusCode::OK);
+    // Ein Zeitfenster, das immer gilt, damit der Test nicht von der Uhrzeit abhängt
+    let mut set = c.get("/api/snapshot").await.1["settings"].clone();
+    set["autoTrack"] = json!({"enabled": true, "ask": true, "windows": [{"days": [true, true, true, true, true, true, true], "from": 0, "to": 1440}]});
+    assert_eq!(c.put("/api/settings", set).await.0, StatusCode::OK);
+    async fn pair(c: &mut Client, name: &str) -> (Client, String, String) {
+        let code = c.post("/api/devices/pair-code", json!({})).await.1["code"].as_str().unwrap().to_string();
+        let mut dev = c.fresh();
+        dev.cookie = None;
+        let r = dev.post("/api/device/pair", json!({"code": code, "name": name, "os": "macos", "version": "1.0.0"})).await.1;
+        (dev, r["token"].as_str().unwrap().to_string(), r["deviceId"].as_str().unwrap().to_string())
+    }
+    let (mut dev, token, id) = pair(&mut c, "Büro-PC").await;
+    let at = chrono::Utc::now().to_rfc3339();
+    let boot = |seq: i64| json!({"events": [{"seq": seq, "kind": "boot", "at": at, "os": "macos"}]});
+    let quit = |seq: i64| json!({"events": [{"seq": seq, "kind": "quit", "at": at, "os": "macos"}]});
+
+    // Neue Geräte starten das Tracking von selbst
+    assert_eq!(c.get("/api/snapshot").await.1["devices"][0]["autoTrack"], true);
+    let (_, st) = dev.call_h(Method::GET, "/api/device/state", None, Some(&token)).await;
+    assert_eq!(st["policy"]["deviceAuto"], true);
+    assert_eq!(st["windowActive"], true);
+    let (_, r) = dev.call_h(Method::POST, "/api/device/events", Some(boot(1)), Some(&token)).await;
+    assert_eq!(r["state"]["track"], "running", "{r}");
+
+    // In der Weboberfläche für dieses Gerät ausgeschaltet: derselbe Rechnerstart fragt nur noch nach
+    let (st, _) = c.call(Method::PATCH, &format!("/api/devices/{id}"), Some(json!({"autoTrack": false}))).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(c.get("/api/snapshot").await.1["devices"][0]["autoTrack"], false);
+    dev.call_h(Method::POST, "/api/device/events", Some(quit(2)), Some(&token)).await;
+    let (_, r) = dev.call_h(Method::POST, "/api/device/events", Some(boot(3)), Some(&token)).await;
+    assert_eq!(r["state"]["track"], "asking", "{r}");
+    assert_eq!(r["state"]["policy"]["deviceAuto"], false);
+    assert_eq!(r["state"]["windowActive"], false);
+
+    // Das Gerät selbst stellt es wieder an
+    let (st, r) = dev.call_h(Method::POST, "/api/device/prefs", Some(json!({"autoTrack": true})), Some(&token)).await;
+    assert_eq!(st, StatusCode::OK, "{r}");
+    assert_eq!(r["policy"]["deviceAuto"], true);
+    assert_eq!(c.get("/api/snapshot").await.1["devices"][0]["autoTrack"], true);
+    dev.call_h(Method::POST, "/api/device/events", Some(quit(4)), Some(&token)).await;
+    let (_, r) = dev.call_h(Method::POST, "/api/device/events", Some(boot(5)), Some(&token)).await;
+    assert_eq!(r["state"]["track"], "running", "{r}");
+
+    // Fremde Geräte lassen sich nicht umstellen
+    let mut other = Client::real().await;
+    assert_eq!(other.login("chef@example.de", "Sehr-Langes-Passwort-42").await, StatusCode::OK);
+    assert_eq!(other.call(Method::PATCH, &format!("/api/devices/{id}"), Some(json!({"autoTrack": false}))).await.0, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

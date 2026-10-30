@@ -5,7 +5,7 @@ mod store;
 use chrono::Utc;
 use serde::Serialize;
 use std::{
-    sync::{Arc, Mutex},
+    sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex},
     time::Duration,
 };
 use store::Store;
@@ -28,6 +28,8 @@ struct Shared {
     quitting: Mutex<bool>,
     last_emit: Mutex<String>,
     asked: Mutex<bool>,
+    /// Startet der Companion mit dem Rechner? Das Betriebssystem ist maßgeblich, hier steht der zuletzt gelesene Stand.
+    autostart: AtomicBool,
 }
 
 #[derive(Serialize, Clone)]
@@ -39,6 +41,7 @@ struct UiState {
     user_name: String,
     version: &'static str,
     os: &'static str,
+    autostart: bool,
     view: Option<View>,
 }
 
@@ -52,6 +55,7 @@ fn ui_state(sh: &Shared) -> UiState {
         user_name: c.as_ref().map(|c| c.user_name.clone()).unwrap_or_default(),
         version: env!("CARGO_PKG_VERSION"),
         os: tickly_platform::system().os(),
+        autostart: sh.autostart.load(Ordering::Relaxed),
         view,
     }
 }
@@ -89,10 +93,10 @@ fn status_text(v: &Option<View>) -> String {
     let t = match v.state.track.as_str() {
         "running" => "Tracking läuft",
         "locked" => "Rechner gesperrt",
-        "paused" => "Tracking gestoppt",
+        "paused" => "Tracking pausiert",
         "asking" => "Arbeitest du gerade?",
         "idle" => "Tracking aus",
-        _ => "Companion nicht aktiv",
+        _ => "Tracking beendet",
     };
     format!("{t} · {} h von {} h{}", hm(v.state.counted), hm(v.state.soll), if v.connected { "" } else { " · offline" })
 }
@@ -104,6 +108,10 @@ struct Tray {
 
 fn refresh_ui(app: &AppHandle, tray: &Tray) {
     let sh = app.state::<Arc<Shared>>();
+    // „Mit dem Rechner starten“ gehört dem Betriebssystem (Anmeldeobjekte, Autostart): so wird auch eine Änderung von außen sichtbar
+    if let Ok(on) = app.autolaunch().is_enabled() {
+        sh.autostart.store(on, Ordering::Relaxed);
+    }
     let st = ui_state(&sh);
     let json = serde_json::to_string(&st).unwrap_or_default();
     {
@@ -117,8 +125,9 @@ fn refresh_ui(app: &AppHandle, tray: &Tray) {
     let _ = tray.status.set_text(status_text(&st.view));
     let track = st.view.as_ref().map(|v| v.state.track.clone()).unwrap_or_default();
     let (label, enabled) = match track.as_str() {
-        "running" | "locked" => ("Tracking stoppen", true),
-        "paused" | "idle" | "stopped" => ("Tracking starten", st.paired),
+        "running" | "locked" => ("Tracking pausieren", true),
+        "paused" => ("Tracking fortsetzen", st.paired),
+        "idle" | "stopped" => ("Tracking starten", st.paired),
         _ => ("Tracking starten", false),
     };
     let _ = tray.toggle.set_text(label);
@@ -136,14 +145,6 @@ fn refresh_ui(app: &AppHandle, tray: &Tray) {
         }
     } else {
         *asked = false;
-    }
-    // Einstellung „Mit dem Rechner starten“ kommt vom Server
-    if let Some(v) = st.view.as_ref().filter(|v| v.connected) {
-        let al = app.autolaunch();
-        let want = v.state.policy.autostart;
-        if al.is_enabled().unwrap_or(want) != want {
-            let _ = if want { al.enable() } else { al.disable() };
-        }
     }
 }
 
@@ -168,6 +169,10 @@ fn pair(app: AppHandle, sh: tauri::State<Arc<Shared>>, server: String, code: Str
     sh.store.save(&creds)?;
     *sh.creds.lock().unwrap() = Some(creds.clone());
     start_engine(&sh, &creds, true);
+    // Ein Zeiterfassungs-Companion soll den Arbeitsbeginn mitbekommen: zunächst mit dem Rechner starten (in der App abschaltbar)
+    if app.autolaunch().enable().is_ok() {
+        sh.autostart.store(true, Ordering::Relaxed);
+    }
     let _ = app.emit("state", ui_state(&sh));
     Ok(ui_state(&sh))
 }
@@ -195,11 +200,38 @@ fn act(sh: tauri::State<Arc<Shared>>, kind: String, value: Option<String>) -> Re
 }
 
 #[tauri::command]
-fn open_dashboard(app: AppHandle, sh: tauri::State<Arc<Shared>>) {
+fn set_autostart(app: AppHandle, sh: tauri::State<Arc<Shared>>, on: bool) -> Result<UiState, String> {
+    let al = app.autolaunch();
+    if on { al.enable() } else { al.disable() }.map_err(|e| format!("Autostart ließ sich nicht ändern: {e}"))?;
+    sh.autostart.store(al.is_enabled().unwrap_or(on), Ordering::Relaxed);
+    Ok(ui_state(&sh))
+}
+
+#[tauri::command]
+fn set_auto_track(sh: tauri::State<Arc<Shared>>, on: bool) -> Result<UiState, String> {
+    match sh.engine.lock().unwrap().as_mut() {
+        Some(e) => e.set_auto_track(Utc::now(), on)?,
+        None => return Err("Das Gerät ist nicht gekoppelt".into()),
+    }
+    Ok(ui_state(&sh))
+}
+
+/// Öffnet die Weboberfläche im Browser, auf Wunsch gleich auf einer Seite („settings“ = Einstellungen).
+fn open_web(app: &AppHandle, sh: &Shared, page: Option<&str>) {
     if let Some(c) = sh.creds.lock().unwrap().as_ref() {
         use tauri_plugin_opener::OpenerExt;
-        let _ = app.opener().open_url(c.server.clone(), None::<&str>);
+        let base = c.server.trim_end_matches('/');
+        let url = match page {
+            Some("settings") => format!("{base}/#/settings"),
+            _ => base.to_string(),
+        };
+        let _ = app.opener().open_url(url, None::<&str>);
     }
+}
+
+#[tauri::command]
+fn open_dashboard(app: AppHandle, sh: tauri::State<Arc<Shared>>, page: Option<String>) {
+    open_web(&app, &sh, page.as_deref());
 }
 
 #[tauri::command]
@@ -226,7 +258,7 @@ fn main() {
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--autostart"])))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![get_view, pair, unpair, act, open_dashboard, quit_app])
+        .invoke_handler(tauri::generate_handler![get_view, pair, unpair, act, open_dashboard, set_autostart, set_auto_track, quit_app])
         .setup(move |app| {
             let dir = app.path().app_data_dir()?;
             let store = Store::new(&dir);
@@ -235,7 +267,7 @@ fn main() {
             if creds.is_none() {
                 if let Some((server, code)) = std::env::var("TICKLY_PAIR").ok().and_then(|v| v.split_once('|').map(|(a, b)| (a.to_string(), b.to_string()))) {
                     match tickly_agent::pair(&server, &code, &hostname(), tickly_platform::system().os(), env!("CARGO_PKG_VERSION")) {
-                        Ok(c) => { let _ = store.save(&c); creds = Some(c); }
+                        Ok(c) => { let _ = store.save(&c); creds = Some(c); let _ = app.autolaunch().enable(); }
                         Err(e) => eprintln!("Kopplung per TICKLY_PAIR fehlgeschlagen: {e}"),
                     }
                 }
@@ -247,6 +279,7 @@ fn main() {
                 quitting: Mutex::new(false),
                 last_emit: Mutex::new(String::new()),
                 asked: Mutex::new(false),
+                autostart: AtomicBool::new(app.autolaunch().is_enabled().unwrap_or(false)),
             });
             app.manage(shared.clone());
             if let Some(c) = &creds {
@@ -258,11 +291,12 @@ fn main() {
 
             // Tray
             let status = MenuItem::with_id(app, "status", status_text(&None), false, None::<&str>)?;
-            let toggle = MenuItem::with_id(app, "toggle", "Tracking stoppen", false, None::<&str>)?;
+            let toggle = MenuItem::with_id(app, "toggle", "Tracking pausieren", false, None::<&str>)?;
             let open = MenuItem::with_id(app, "open", "Fenster öffnen", true, None::<&str>)?;
             let dash = MenuItem::with_id(app, "dash", "Dashboard im Browser", true, None::<&str>)?;
+            let settings = MenuItem::with_id(app, "settings", "Einstellungen im Browser", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "Tickly beenden", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&status, &PredefinedMenuItem::separator(app)?, &toggle, &open, &dash, &PredefinedMenuItem::separator(app)?, &quit_i])?;
+            let menu = Menu::with_items(app, &[&status, &PredefinedMenuItem::separator(app)?, &toggle, &open, &dash, &settings, &PredefinedMenuItem::separator(app)?, &quit_i])?;
             // macOS: einfarbiges Symbol, das das System passend zur Menüleiste einfärbt (hell/dunkel); Windows: das farbige
             #[cfg(target_os = "macos")]
             let (tray_icon, as_template) = (tauri::include_image!("icons/tray-template.png"), true);
@@ -284,12 +318,8 @@ fn main() {
                             }
                         }
                         "open" => show_window(app),
-                        "dash" => {
-                            if let Some(c) = sh.creds.lock().unwrap().as_ref() {
-                                use tauri_plugin_opener::OpenerExt;
-                                let _ = app.opener().open_url(c.server.clone(), None::<&str>);
-                            }
-                        }
+                        "dash" => open_web(app, &sh, None),
+                        "settings" => open_web(app, &sh, Some("settings")),
                         "quit" => quit(app, &sh),
                         _ => {}
                     }

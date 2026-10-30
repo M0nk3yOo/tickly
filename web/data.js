@@ -111,7 +111,7 @@ function trackState() {
   const d = S.day, ago = d.ended != null ? `seit ${hm(d.ended)}` : '';
   if (d.tracking) {
     const o = d.segs[d.segs.length - 1];
-    if (!o) return { key: 'stopped', label: 'Tracking gestoppt', cls: 'stop', sub: '' };
+    if (!o) return { key: 'stopped', label: 'Tracking beendet', cls: 'stop', sub: '' };
     if (o.kind === 'locked') return { key: 'locked', label: 'Rechner gesperrt', cls: 'lock', sub: `seit ${hm(o.from)}` };
     return { key: 'running', label: 'Tracking läuft', cls: 'run', sub: `${appOf(o.app).n} seit ${hm(o.from)}`, app: o.app, since: o.from };
   }
@@ -119,7 +119,7 @@ function trackState() {
   if (d.stop === 'ask') return { key: 'ask', label: 'Rückfrage offen', cls: 'lock', sub: 'Arbeitest du gerade?' };
   if (d.stop === 'idle') return { key: 'idle', label: 'Tracking aus', cls: 'stop', sub: 'Nicht gestartet' };
   const last = d.events && d.events[d.events.length - 1];
-  return { key: 'stopped', label: 'Tracking gestoppt', cls: 'stop', sub: last && last.k === 'stop' ? 'Im Web beendet' : 'Companion beendet' };
+  return { key: 'stopped', label: 'Tracking beendet', cls: 'stop', sub: last && last.k === 'stop' ? 'Im Web beendet' : 'Companion beendet' };
 }
 /** Der Tag ist beendet (Companion beendet / Rechner aus), nicht nur pausiert. */
 const dayClosed = () => !S.day.tracking && S.day.segs.length > 0 && S.day.stop !== 'pause';

@@ -21,6 +21,9 @@ pub struct Ev {
     /// Kommt aus der Weboberfläche (nicht vom Companion). Setzt der Server, nie der Client.
     #[serde(skip)]
     pub web: bool,
+    /// Auf dem meldenden Gerät ist der automatische Start abgeschaltet. Setzt der Server, nie der Client.
+    #[serde(skip)]
+    pub no_auto: bool,
 }
 
 /// Ereignisse, die nur im Demo-Modus gelten (Zeitreise, Tag zurücksetzen).
@@ -47,7 +50,8 @@ pub async fn apply(app: &App, conn: &mut PgConnection, u: &UserRow, abs: &[Absen
         _ => "Windows",
     };
     db::lock_user(conn, &u.id).await?;
-    let p = track_policy(&u.settings, abs, date, now);
+    let mut p = track_policy(&u.settings, abs, date, now);
+    if ev.no_auto { p.auto_from = None; }
     let kind = ev.kind.as_str();
     // Erster Eintrag des Tages: Lief der Vortag um Mitternacht noch, geht es nahtlos weiter.
     let mut day: Option<tickly_core::DayState> = db::get_day(conn, &u.id, date).await?;

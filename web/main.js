@@ -370,7 +370,7 @@ const H = {
   async cAct(el) {
     const k = el.dataset.k; if (k === 'newday') S.now = 7 * 60 + 58;
     await api('POST', '/companion', { kind: k, now: nowQ(), os: S.os });
-    toast({ newday: 'Neuer Arbeitstag – Rechnerstart ' + hm(S.now) + ' gemerkt', boot: 'Rechner gestartet', lock: 'Bildschirm gesperrt', unlock: 'Entsperrt', pause: 'Tracking gestoppt – die Pause wird nicht gezählt', quit: 'Companion beendet – Tracking gestoppt', shutdown: 'Rechner heruntergefahren', start: 'Tracking läuft' }[k]); await sync();
+    toast({ newday: 'Neuer Arbeitstag – Rechnerstart ' + hm(S.now) + ' gemerkt', boot: 'Rechner gestartet', lock: 'Bildschirm gesperrt', unlock: 'Entsperrt', pause: 'Tracking pausiert – die Pause wird nicht gezählt', quit: 'Companion beendet – Tracking beendet', shutdown: 'Rechner heruntergefahren', start: 'Tracking läuft' }[k]); await sync();
   },
   /* Zeiterfassung im Web: Beenden jetzt oder mit eigenem Ende, mit Vorschau von Brutto und Netto */
   async stopOpen(el) { S.modal = { type: 'stop', mode: el.dataset.m, at: Math.floor(S.now), prev: null, err: '' }; renderModalOnly(); await H.stopPreview(); },
@@ -417,6 +417,7 @@ const H = {
   async xdDel(el) { S.set.extraDays.custom.splice(+el.dataset.i, 1); await saveSet(); },
   async pairCode() { const r = await api('POST', '/devices/pair-code', {}); S.pairCode = { code: r.code, until: Date.now() + r.expiresIn * 1000 }; render(); },
   copyCode() { navigator.clipboard.writeText(S.pairCode.code).then(() => toast('Code kopiert'), () => toast('Kopieren nicht möglich – bitte markieren', true)); },
+  async devAuto(el) { const d = S.devices.find(x => x.id === el.dataset.id); await api('PATCH', '/devices/' + d.id, { autoTrack: !d.autoTrack }); toast(d.autoTrack ? 'Automatischer Start für „' + d.name + '“ aus' : 'Automatischer Start für „' + d.name + '“ an'); await sync(); },
   devRevoke(el) { const d = S.devices.find(x => x.id === el.dataset.id); confirmBox('Kopplung aufheben?', `„${d.name}“ kann danach keine Zeiten mehr melden und muss neu gekoppelt werden.`, 'Aufheben', async () => { await api('DELETE', '/devices/' + d.id); toast('Kopplung aufgehoben'); await sync(); }); },
   /* Zeiten nachträglich bearbeiten */
   dayEdit() {

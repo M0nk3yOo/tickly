@@ -6,7 +6,7 @@ Eine kleine App auf Windows und macOS erkennt Arbeitsbeginn, Sperre, Pausen und 
 
 <p align="center"><img src="docs/screenshots/02-uebersicht.png" alt="Übersicht" width="860"></p>
 
-> **Stand: Version 0.9.10.** Server, Weboberfläche und macOS-Companion sind getestet.
+> **Stand: Version 0.9.11.** Server, Weboberfläche und macOS-Companion sind getestet.
 > Der **Windows-Teil der Companion-App ist geschrieben und wird in der CI übersetzt, wurde aber noch nicht auf einem echten Windows-Rechner ausgeführt**. Mehr unter [Bekannte Grenzen](#bekannte-grenzen).
 
 ## Was Tickly kann
@@ -15,7 +15,7 @@ Eine kleine App auf Windows und macOS erkennt Arbeitsbeginn, Sperre, Pausen und 
 - Der **Companion** startet mit dem Rechner und merkt sich den Arbeitsbeginn. Sperre und Ruhezustand erscheinen im Zeitverlauf, die **aktive App** wird mit Dauer festgehalten (nie Fenstertitel).
 - **Neustart ohne Datenverlust:** Lief das Tracking, geht es nach einem Neustart oder Absturz von selbst weiter. Ein **richtiges Beenden** der App stoppt das Tracking und setzt das Arbeitsende.
 - **Auch ohne Verbindung** (Zug, Kunde ohne WLAN): Der Companion rechnet lokal mit und überträgt alles später, mit den echten Zeitpunkten.
-- **Zeitfenster** je Wochentag starten das Tracking automatisch; außerhalb fragt der Companion „Arbeitest du gerade?“. Stoppen und Fortsetzen geht im Companion und in der Weboberfläche.
+- **Zeitfenster** je Wochentag starten das Tracking automatisch; außerhalb fragt der Companion „Arbeitest du gerade?“. Pausieren und Fortsetzen geht im Companion, Beenden in der Weboberfläche; den automatischen Start schaltest du je Gerät ab.
 - **Nachträglich korrigieren** und **manuell ergänzen** (z. B. ein Termin ohne Rechner), mit Protokoll und einstellbarem Zeitraum.
 
 **Rechnen**

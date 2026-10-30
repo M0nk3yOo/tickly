@@ -1,5 +1,15 @@
 # Änderungen
 
+## 0.9.11
+
+Aktualisierung von 0.9.10: Die Datenbank wird beim Start automatisch angepasst (Migration 0014). Server und Companion sollten gemeinsam aktualisiert werden.
+
+- **Automatischer Tracking-Start je Gerät:** Für jedes gekoppelte Gerät lässt sich einstellen, ob das Tracking beim Rechnerstart im Zeitfenster von selbst beginnt. Aus: Der Companion fragt (je nach Einstellung) nach oder wartet, bis du das Tracking startest; ein Gerät, das schon lief, setzt es nach einem Neustart weiter fort. Die Einstellung steht im Companion-Fenster und in der Weboberfläche unter *Companion-App* beim Gerät. Neue Geräte starten automatisch.
+- **„Mit Windows/macOS starten“ wandert in den Companion:** Die Einstellung gehört zum Rechner und steht jetzt im Companion-Fenster statt in den Einstellungen der Weboberfläche. Der Companion liest den Stand vom Betriebssystem, eine Änderung in den Systemeinstellungen wird also richtig angezeigt. Bei einer neuen Kopplung ist der Autostart zunächst an. Bestehende Geräte behalten ihren bisherigen Stand.
+- **Einstellungen-Knopf im Companion:** Der neue Knopf im Fenster (und der Eintrag im Tray-Menü) öffnet die Weboberfläche direkt bei den Einstellungen.
+- **Einheitliche Begriffe:** Überall heißt es jetzt **Tracking starten**, **pausieren**, **fortsetzen** und **beenden**; „stoppen“ und „gestoppt“ gibt es nicht mehr. Pausiert wird nur vorübergehend (der Tag bleibt offen), beendet ist der Arbeitstag. Das betrifft die Weboberfläche, das Companion-Fenster, das Tray-Menü und die Ereignistexte neuer Einträge in der Tagesansicht (bereits gespeicherte Einträge behalten ihren Text).
+- **Weboberfläche, Kleinigkeiten:** Das Tickly-Logo oben links führt zur Startseite. Das Feld „Mindestlänge Passwort“ in der Serververwaltung steht bündig mit den anderen Feldern. Auf der Übersicht heißt die Überschrift „Letzten zwei Wochen“ und der Legendeneintrag „Arbeitszeit“ (statt „Bis Soll“).
+
 ## 0.9.10
 
 Aktualisierung von 0.9.9: keine Änderungen an der Konfiguration oder Datenbank nötig. Die Änderung betrifft nur die Weboberfläche (Server); der Companion ist funktional unverändert.

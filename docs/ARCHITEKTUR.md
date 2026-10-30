@@ -61,7 +61,7 @@ Alle Pfade unter `/api`. Antworten sind JSON; Fehler `{ "error": "…" }`. Anmel
 | TOTP | `POST /totp/{setup,enable,disable,recovery}` |
 | Daten | `GET /snapshot`, `GET /today`, `PUT /settings`, `POST /me`, `POST /absences`, `PUT/DELETE /absences/{id}`, `PUT /days/{date}`, `POST /companion` |
 | Sitzungen | `GET /sessions`, `DELETE /sessions/{id}` |
-| Geräte | `POST /devices/pair-code`, `DELETE /devices/{id}`, `POST /device/pair`, `POST /device/events`, `GET /device/state` |
+| Geräte | `POST /devices/pair-code`, `DELETE /devices/{id}`, `PATCH /devices/{id}` (Auto-Start je Gerät), `POST /device/pair`, `POST /device/events`, `GET /device/state`, `POST /device/prefs` (das Gerät stellt seinen Auto-Start selbst ein) |
 | Administration | `/admin/users…`, `/admin/registration`, `/admin/security`, `/admin/ip-blocks`, `/admin/log`, `/admin/sessions`, `/admin/devices/{id}`, `/admin/smtp`, `/admin/backup`, `/admin/backups`, `/admin/backup-policy`, `/admin/restore` |
 
 ## Zeit und Datum

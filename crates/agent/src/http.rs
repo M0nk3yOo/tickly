@@ -93,4 +93,12 @@ impl Transport for HttpTransport {
         }
         r.json::<ServerState>().map_err(|e| TransportError::Server(e.to_string()))
     }
+
+    fn set_auto_track(&mut self, on: bool, timeout: Duration) -> Result<ServerState, TransportError> {
+        let r = client(timeout).post(format!("{}/api/device/prefs", self.base)).bearer_auth(&self.token).json(&json!({ "autoTrack": on })).send().map_err(offline)?;
+        if !r.status().is_success() {
+            return Err(read_error(r));
+        }
+        r.json::<ServerState>().map_err(|e| TransportError::Server(e.to_string()))
+    }
 }
