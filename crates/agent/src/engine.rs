@@ -24,6 +24,8 @@ const BATCH: usize = 100;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Action {
     Pause,
+    /// Tracking beenden (Arbeitsende), die App läuft weiter
+    End,
     Resume,
     /// „work“, „boot“ (ab Rechnerstart) oder „no“
     Answer(String),
@@ -147,6 +149,7 @@ impl<T: Transport> Engine<T> {
             st.tracking = d.tracking;
             st.since = d.segs.last().map(|g| g.from);
             st.start = d.segs.first().map(|g| g.from);
+            st.boot_at = Some(d.start);
             // Soll laut Server; für einen Tag, den der Server noch nicht kennt, aus den Einstellungen
             let soll = if same_day { st.soll } else if st.day_off { 0.0 } else { s.hours[date.weekday().num_days_from_monday() as usize] * 60.0 };
             st.balance = if same_day { st.balance + (k.counted - st.counted) } else { st.balance + k.counted - soll };
@@ -270,6 +273,7 @@ impl<T: Transport> Engine<T> {
         self.clock = now;
         match a {
             Action::Pause => self.emit("pause", now, None, None),
+            Action::End => self.emit("end", now, None, None),
             Action::Resume => self.emit("start", now, None, None),
             Action::Answer(v) => self.emit("answer", now, None, Some(v)),
         };
@@ -848,6 +852,23 @@ mod tests {
     /// 07:00 Uhr in Berlin, mitten im Standard-Zeitfenster (6–10 Uhr)
     fn morning(sec: i64) -> DateTime<Utc> {
         DateTime::parse_from_rfc3339("2026-10-26T06:00:00Z").unwrap().with_timezone(&Utc) + Cd::seconds(sec)
+    }
+
+    #[test]
+    fn ending_the_tracking_keeps_the_app_running_and_reaches_the_server() {
+        let world = replay_world(true, true);
+        let (_pcs, platform) = pc("Code");
+        let mut e = Engine::new(platform, ReplayServer(world.clone()), Outbox::in_memory());
+        e.start(morning(0), false);
+        assert_eq!(e.view().state.track, "running");
+        e.action(morning(600), Action::End);
+        assert_eq!(e.view().state.track, "stopped");
+        assert_eq!(world.lock().unwrap().day.as_ref().unwrap().track().as_str(), "stopped", "der Server hat das Arbeitsende");
+        // Die App läuft weiter: Tracking starten geht wieder, und der Zeitfenster-Start überstimmt das Beenden nicht
+        e.tick(morning(660));
+        assert_eq!(e.view().state.track, "stopped");
+        e.action(morning(720), Action::Resume);
+        assert_eq!(e.view().state.track, "running");
     }
 
     #[test]

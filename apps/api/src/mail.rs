@@ -171,6 +171,35 @@ pub async fn send_verification(app: &Arc<App>, u: &UserRow) -> Res<()> {
     Ok(())
 }
 
+/// Neue E-Mail-Adresse für ein Konto: Sie wird nicht sofort übernommen, sondern erst, wenn der Link in der Mail an die
+/// **neue** Adresse geöffnet wird. `true` heißt: Bestätigung ausstehend. Dieselbe Adresse wie bisher nimmt eine offene Änderung zurück.
+pub async fn change_email(app: &Arc<App>, u: &UserRow, new: &str) -> Res<bool> {
+    let new = new.trim();
+    if new.eq_ignore_ascii_case(&u.email) {
+        if u.pending_email.is_some() {
+            sqlx::query("UPDATE users SET pending_email = NULL WHERE id = $1").bind(&u.id).execute(&app.pool).await?;
+            sqlx::query("DELETE FROM email_tokens WHERE user_id = $1 AND kind = 'email'").bind(&u.id).execute(&app.pool).await?;
+        }
+        return Ok(false);
+    }
+    if db::user_by_email(&app.pool, new).await?.is_some_and(|x| x.id != u.id) { return conflict("Diese E-Mail-Adresse wird bereits verwendet") }
+    // Die Demo hat keinen echten Mailversand
+    if app.cfg.demo {
+        sqlx::query("UPDATE users SET email = $2, pending_email = NULL WHERE id = $1").bind(&u.id).bind(new).execute(&app.pool).await?;
+        return Ok(false);
+    }
+    if active(&app.pool).await.is_none() {
+        return bad("Eine neue E-Mail-Adresse muss per Mail bestätigt werden. Dafür braucht Tickly einen eingerichteten SMTP-Server (Administration → E-Mail).");
+    }
+    sqlx::query("UPDATE users SET pending_email = $2 WHERE id = $1").bind(&u.id).bind(new).execute(&app.pool).await?;
+    let t = new_token(&app.pool, &u.id, "email", Duration::hours(24)).await?;
+    spawn(app.clone(), vec![new.to_string()], "Bitte bestätige deine neue E-Mail-Adresse".into(), "Neue E-Mail-Adresse bestätigen".into(),
+        vec![format!("Für das Tickly-Konto von {} soll diese Adresse die bisherige ersetzen. Bestätige sie, damit sie übernommen wird. Der Link ist 24 Stunden gültig.", u.name),
+             "Hast du das nicht veranlasst, ignoriere diese Mail: Es ändert sich nichts.".into()],
+        Some(("E-Mail-Adresse bestätigen".into(), link(app, "emailchange", &t))));
+    Ok(true)
+}
+
 /// Konto ist fertig angelegt (und bestätigt): wartet es auf Freigabe, erfahren es die Administratoren.
 pub async fn registration_ready(app: &Arc<App>, u: &UserRow) {
     if u.status != "pending" { return }
@@ -190,6 +219,7 @@ pub fn routes() -> Router<Arc<App>> {
         .route("/auth/reset", post(reset))
         .route("/auth/verify", post(verify))
         .route("/auth/resend-verification", post(resend))
+        .route("/auth/confirm-email", post(confirm_email))
         .route("/me/password", post(change_password))
 }
 
@@ -316,6 +346,24 @@ async fn verify(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientIp>
     let sid = db::create_session(&app.pool, &u.id, false, false, secs, &ip, &netsec::ua(&h)).await?;
     let secure = if app.cfg.secure_cookie { "; Secure" } else { "" };
     Ok(([(header::SET_COOKIE, format!("tickly_sid={sid}; Path=/; HttpOnly; SameSite=Lax; Max-Age={secs}{secure}"))], Json(json!({ "ok": true, "status": "active" }))).into_response())
+}
+
+/// Link aus der Mail an die neue Adresse: übernimmt sie (einmalig). Der Link ist das Geheimnis, eine Anmeldung ist nicht nötig.
+async fn confirm_email(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientIp>, Json(r): Json<TokenIn>) -> Res<Json<Value>> {
+    netsec::guard(&app, ip).await?;
+    let Some(uid) = take_token(&app.pool, &r.token, "email").await? else {
+        netsec::failure(&app, "login", ip, &h, None, None, "Ungültiger oder abgelaufener Link zur Bestätigung einer E-Mail-Adresse").await;
+        return bad("Der Link ist ungültig oder abgelaufen. Fordere die Änderung in den Einstellungen noch einmal an.");
+    };
+    let Some(u) = db::user_by_id(&app.pool, &uid).await? else { return not_found("Konto nicht gefunden") };
+    let Some(new) = u.pending_email.clone() else { return bad("Es gibt keine offene Änderung der E-Mail-Adresse.") };
+    if db::user_by_email(&app.pool, &new).await?.is_some_and(|x| x.id != u.id) { return conflict("Diese E-Mail-Adresse wird inzwischen von einem anderen Konto verwendet") }
+    sqlx::query("UPDATE users SET email = $2, pending_email = NULL, email_verified_at = now() WHERE id = $1").bind(&u.id).bind(&new).execute(&app.pool).await?;
+    netsec::log(&app, "profile", true, ip, &h, Some(&u.id), Some(&new), &format!("E-Mail-Adresse geändert: {} → {}", u.email, new)).await;
+    // Die bisherige Adresse erfährt davon
+    spawn(app.clone(), vec![u.email.clone()], "Deine Tickly-E-Mail-Adresse wurde geändert".into(), "E-Mail-Adresse geändert".into(),
+        vec![format!("Die E-Mail-Adresse deines Tickly-Kontos ist jetzt {new}. Du meldest dich ab sofort mit dieser Adresse an."), "Warst du das nicht, wende dich an deinen Administrator.".into()], None);
+    Ok(Json(json!({ "ok": true, "email": new })))
 }
 
 async fn resend(State(app): St, Extension(ip): Extension<ClientIp>, Json(r): Json<EmailIn>) -> Res<Json<Value>> {

@@ -3,9 +3,9 @@ resolver = "2"
 members = ["crates/core", "crates/platform", "crates/agent", "apps/api"]
 
 [workspace.package]
-version = "0.9.11"
+version = "0.9.12"
 edition = "2021"
-license = "MIT"
+license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
 chrono = { version = "0.4", default-features = false, features = ["serde", "std", "clock"] }

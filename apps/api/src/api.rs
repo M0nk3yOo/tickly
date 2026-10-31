@@ -509,7 +509,7 @@ async fn snapshot_json(app: &App, u: &UserRow, today: NaiveDate, now: f64) -> Re
             let xm = db::mfa_status_with(&x, pk, &reg);
             users.push(json!({
                 "mfa": if x.status == "active" { json!({ "required": xm.required, "compliant": xm.compliant, "deadline": xm.deadline, "expired": xm.expired }) } else { Value::Null },
-                "id": x.id, "name": x.name, "email": x.email, "role": x.role, "status": x.status, "passkeys": pk,
+                "id": x.id, "name": x.name, "email": x.email, "pendingEmail": x.pending_email, "role": x.role, "status": x.status, "passkeys": pk,
                 "totp": x.totp_enabled, "mustChangePw": x.must_change_pw, "startBalSet": x.start_bal_set, "startBal": x.settings.start_bal, "week": db::week_hours(&x.settings), "bal": bal, "last": db::last_label(&x, now_utc),
                 "today": labels.get(&x.id).cloned().unwrap_or_else(|| "none".into()),
             }));
@@ -548,9 +548,10 @@ async fn today(State(app): St, h: HeaderMap, Query(q): Query<NowQ>) -> Res<Json<
     demo_ensure_day(&app, &u, now).await?;
     let calc = Calc::load(&app, &u, today, now).await?;
     let clash = device::clash(&app, &u.id, today).await?;
+    let devices = device::list_for(&app, &u.id).await?;
     Ok(Json(calc.with(|c| {
         let t = day_stat(c, c.today);
-        json!({ "day": c.day, "today": t, "date": today, "now": now, "forecastEnd": forecast_end(c, &t), "nightCheck": night_check(c).as_ref().map(night_json), "deviceClash": clash.filter(|_| c.day.tracking) })
+        json!({ "day": c.day, "today": t, "date": today, "now": now, "forecastEnd": forecast_end(c, &t), "nightCheck": night_check(c).as_ref().map(night_json), "deviceClash": clash.filter(|_| c.day.tracking), "devices": devices })
     })))
 }
 
@@ -586,9 +587,10 @@ struct MeReq { name: String, email: String }
 async fn put_me(State(app): St, h: HeaderMap, Json(r): Json<MeReq>) -> Res<Json<Value>> {
     let u = auth(&app, &h, false).await?;
     if r.name.trim().is_empty() || !valid_email(&r.email) { return bad("Bitte Name und gültige E-Mail eingeben") }
-    if db::user_by_email(&app.pool, &r.email).await?.is_some_and(|x| x.id != u.id) { return conflict("Diese E-Mail-Adresse wird bereits verwendet") }
-    sqlx::query("UPDATE users SET name = $2, email = $3 WHERE id = $1").bind(&u.id).bind(r.name.trim()).bind(r.email.trim()).execute(&app.pool).await?;
-    Ok(Json(json!({ "ok": true })))
+    // Eine neue Adresse gilt erst, wenn sie per Link bestätigt ist
+    let pending = crate::mail::change_email(&app, &u, &r.email).await?;
+    sqlx::query("UPDATE users SET name = $2 WHERE id = $1").bind(&u.id).bind(r.name.trim()).execute(&app.pool).await?;
+    Ok(Json(json!({ "ok": true, "emailPending": pending })))
 }
 
 fn check_abs(a: &Absence) -> Res<()> {
@@ -824,15 +826,16 @@ async fn admin_update(State(app): St, h: HeaderMap, Extension(ip): Extension<Cli
     if r.name.trim().is_empty() || !valid_email(&r.email) { return bad("Bitte Name und gültige E-Mail eingeben") }
     if !["admin", "user"].contains(&r.role.as_str()) { return bad("Unbekannte Rolle") }
     if id == me.id && r.role != "admin" { return bad("Du kannst dir die Administratorrolle nicht selbst entziehen") }
-    if db::user_by_email(&app.pool, &r.email).await?.is_some_and(|x| x.id != id) { return conflict("Diese E-Mail-Adresse ist bereits vergeben") }
     let Some(u) = db::user_by_id(&app.pool, &id).await? else { return not_found("Benutzer nicht gefunden") };
+    // Eine neue Adresse geht als Bestätigungslink an die neue Adresse und gilt erst danach
+    let pending = crate::mail::change_email(&app, &u, &r.email).await?;
     let mut s = u.settings.0.clone();
     let mut changed_bal = false;
     if (db::week_hours(&s) - r.week).abs() > 0.01 { s.hours = db::weekly_settings(r.week.clamp(1.0, 80.0)).hours; }
     if let Some(b) = r.start_bal { if !b.is_finite() || b.abs() > 2000.0 { return bad("Der Übertrag muss zwischen −2000 und +2000 Stunden liegen") } if (s.start_bal - b).abs() > 1e-9 { changed_bal = true; } s.start_bal = b; }
-    sqlx::query("UPDATE users SET name = $2, email = $3, role = $4, settings = $5, start_bal_set = start_bal_set OR $6 WHERE id = $1").bind(&id).bind(r.name.trim()).bind(r.email.trim()).bind(&r.role).bind(SJson(&s)).bind(changed_bal).execute(&app.pool).await?;
-    netsec::admin_action(&app, &me, ip, &h, &format!("Benutzer geändert: {} (Rolle {})", r.email.trim(), r.role)).await;
-    Ok(Json(json!({ "ok": true })))
+    sqlx::query("UPDATE users SET name = $2, role = $3, settings = $4, start_bal_set = start_bal_set OR $5 WHERE id = $1").bind(&id).bind(r.name.trim()).bind(&r.role).bind(SJson(&s)).bind(changed_bal).execute(&app.pool).await?;
+    netsec::admin_action(&app, &me, ip, &h, &format!("Benutzer geändert: {} (Rolle {}){}", u.email, r.role, if pending { format!(" · neue Adresse {} wartet auf Bestätigung", r.email.trim()) } else { String::new() })).await;
+    Ok(Json(json!({ "ok": true, "emailPending": pending })))
 }
 
 #[derive(Deserialize)]

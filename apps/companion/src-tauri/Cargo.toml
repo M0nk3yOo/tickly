@@ -1,8 +1,8 @@
 [package]
 name = "tickly-companion"
-version = "0.9.11"
+version = "0.9.12"
 edition = "2021"
-license = "MIT"
+license = "GPL-3.0-or-later"
 description = "Tickly Companion: erkennt Arbeitsbeginn, Sperre und aktive App und meldet sie dem Server"
 
 # Eigenständig gebaut (Tauri braucht das gebaute Frontend), nicht Teil des Cargo-Workspace im Wurzelverzeichnis.

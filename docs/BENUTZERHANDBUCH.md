@@ -23,7 +23,7 @@
 - **Arbeitsbeginn, Brutto, Pause, voraussichtliches Ende:** Das Ende ergibt sich, wenn du ab jetzt durcharbeitest.
 - **Wochen-/Monatssaldo, Überstundenkonto:** Feiertage, Urlaub und Krankheit senken das Soll auf 0 – sie erzeugen kein Minus. Zeitausgleich baut Überstunden bewusst ab.
 - **Pausieren/Fortsetzen:** Hält die Zeiterfassung an (die Pause zählt nicht, der Tag bleibt offen). Das geht im Companion; im Web siehst du den Zustand und setzt ein pausiertes Tracking fort.
-- **Tracking beenden:** Beendet den Arbeitstag. Vorher zeigt Tickly, **zu welchem Zeitpunkt** beendet wird und was das bedeutet: Brutto (Anwesenheit), Pause und Netto. **Ende festlegen …** beendet mit einer eigenen Uhrzeit, zum Beispiel wenn du es vergessen hast: Alles nach diesem Zeitpunkt wird nicht gezählt, und die Vorschau rechnet Brutto und Netto für die gewählte Zeit aus. Das Ende liegt zwischen Arbeitsbeginn und jetzt. Liegt es in einer Pause, endet die Arbeitszeit am Beginn der Pause. Für frühere Tage nutzt du *Tagesansicht → Zeiten bearbeiten*.
+- **Tracking beenden:** Beendet den Arbeitstag. Das geht auch im Companion (Knopf *Tracking beenden*, die App läuft weiter, ohne Vorschau; Ende ist jetzt bzw. der Beginn einer Pause). Vorher zeigt Tickly, **zu welchem Zeitpunkt** beendet wird und was das bedeutet: Brutto (Anwesenheit), Pause und Netto. **Ende festlegen …** beendet mit einer eigenen Uhrzeit, zum Beispiel wenn du es vergessen hast: Alles nach diesem Zeitpunkt wird nicht gezählt, und die Vorschau rechnet Brutto und Netto für die gewählte Zeit aus. Das Ende liegt zwischen Arbeitsbeginn und jetzt. Liegt es in einer Pause, endet die Arbeitszeit am Beginn der Pause. Für frühere Tage nutzt du *Tagesansicht → Zeiten bearbeiten*.
 - Normalerweise machst du nichts davon: Der **Companion** startet das Tracking automatisch und beendet es beim Herunterfahren.
 
 ### Nur im Web erfassen (ohne Companion)
@@ -83,14 +83,14 @@ Urlaub, Krankheit, Zeitausgleich im Kalender eintragen. Wochenenden und Feiertag
 - **Zeiterfassung:** automatische Pausenregeln (z. B. ab 6 h 30 Min.), gesperrte Zeit als Pause werten, Mindestdauer.
 - **Feiertage:** Bundesland und **weitere freie Tage** (Rosenmontag, Heiligabend, Silvester, eigene).
 - **Tracking & Datenschutz:** automatischer Start nach **Zeitfenstern**, Rückfrage außerhalb, App-Erfassung, ausgeschlossene Apps, Export. Ob der Companion **mit dem Rechner startet**, stellst du im Companion selbst ein, ob das Tracking auf einem Gerät **von selbst startet**, im Companion oder unter *Companion-App* beim Gerät.
-- **Profil:** Name, E-Mail, **Darstellung** (System/Hell/Dunkel).
+- **Profil:** Name, E-Mail, **Darstellung** (System/Hell/Dunkel). Eine **neue E-Mail-Adresse** gilt erst, wenn du den Link in der Mail öffnest, die Tickly an die *neue* Adresse schickt (24 Stunden gültig). Bis dahin meldest du dich mit der bisherigen an. Die bisherige Adresse bekommt danach eine Info-Mail. Zurücknehmen: bisherige Adresse eintragen und speichern. Das braucht einen eingerichteten SMTP-Server.
 
 ![Tracking-Einstellungen](screenshots/09-einstellungen-tracking.png)
 
 ### Wie Zeitfenster und Rückfrage zusammenspielen
 
 - Startet der Rechner **in einem Zeitfenster** (nicht an Feiertagen/Urlaub), beginnt das Tracking von selbst.
-- Sonst fragt der Companion **„Arbeitest du gerade?“**. *Ja, Tracking starten* beginnt jetzt, *ab Rechnerstart* rechnet rückwirkend, *Nein* lässt es aus – bis das nächste Zeitfenster beginnt.
+- Sonst fragt der Companion **„Arbeitest du gerade?“**. *Ja, jetzt starten* beginnt jetzt, *Ja, ab 07:52 Uhr* rechnet rückwirkend ab dem Rechnerstart (die Uhrzeit steht im Knopf), *Nein* lässt es aus – bis das nächste Zeitfenster beginnt.
 - Ein bewusstes **Pausieren** wird nie von einem Zeitfenster überstimmt.
 - Ist **Tracking automatisch starten** für ein Gerät aus, beginnt das Tracking dort nie von selbst: der Companion fragt (je nach Einstellung) oder wartet, bis du es startest. Ein Gerät, das schon lief, setzt das Tracking nach einem Neustart trotzdem fort.
 - Lief das Tracking beim Herunterfahren/Neustart, geht es danach immer weiter.

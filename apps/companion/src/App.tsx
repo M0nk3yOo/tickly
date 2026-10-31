@@ -103,7 +103,7 @@ function Main({ s, set }: { s: UiState; set: (s: UiState) => void }) {
   const st = v?.state;
   const track = (st?.track || "") as Track;
   const running = track === "running" || track === "locked";
-  const act = async (k: "pause" | "resume" | "answer", val?: string) => set(await api.act(k, val));
+  const act = async (k: "pause" | "resume" | "end" | "answer", val?: string) => set(await api.act(k, val));
   const [err, setErr] = useState("");
   const change = async (f: () => Promise<UiState>) => {
     setErr("");
@@ -159,10 +159,13 @@ function Main({ s, set }: { s: UiState; set: (s: UiState) => void }) {
         {track === "asking" && (
           <div className="ask">
             <h2>Arbeitest du gerade?</h2>
-            <p>Der Rechner läuft außerhalb deiner automatischen Zeitfenster. Soll die Zeiterfassung laufen?</p>
-            <div className="row">
-              <button className="btn primary" onClick={() => act("answer", "work")}>Ja, Tracking starten</button>
-              {fresh && <button className="btn" onClick={() => act("answer", "boot")}>Ja, ab Rechnerstart</button>}
+            <p>
+              Der Rechner läuft außerhalb deiner automatischen Zeitfenster. Soll die Zeiterfassung laufen?
+              {fresh && st?.bootAt != null && ` „Ab ${clock(st.bootAt)} Uhr“ zählt rückwirkend ab dem Rechnerstart.`}
+            </p>
+            <div className="row nowrap">
+              <button className="btn primary grow" onClick={() => act("answer", "work")}>Ja, jetzt starten</button>
+              {fresh && <button className="btn grow" onClick={() => act("answer", "boot")}>Ja, ab {st?.bootAt != null ? `${clock(st.bootAt)} Uhr` : "Rechnerstart"}</button>}
               <button className="btn" onClick={() => act("answer", "no")}>Nein</button>
             </div>
           </div>
@@ -196,6 +199,7 @@ function Main({ s, set }: { s: UiState; set: (s: UiState) => void }) {
           ) : (
             track !== "asking" && <button className="btn primary grow" onClick={() => act("resume")}>{track === "paused" ? "Tracking fortsetzen" : "Tracking starten"}</button>
           )}
+          {(running || track === "paused") && <button className="btn" onClick={() => act("end")} title="Arbeitsende setzen – die App läuft weiter">Tracking beenden</button>}
         </div>
         <div className="row">
           <button className="btn grow" onClick={() => api.dashboard()}>Dashboard</button>

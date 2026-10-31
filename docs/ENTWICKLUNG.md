@@ -73,6 +73,6 @@ Docker braucht `"cliPluginsExtraDirs": ["/opt/homebrew/lib/docker/cli-plugins"]`
 
 ## Mitwirken
 
-Tickly steht unter der [MIT-Lizenz](../LICENSE); mit einem Beitrag stimmst du zu, dass er unter dieser Lizenz veröffentlicht wird.
+Tickly steht unter der [GPL, Version 3 oder später](../LICENSE); mit einem Beitrag stimmst du zu, dass er unter dieser Lizenz veröffentlicht wird.
 
 Fehler und Wünsche als Issue. Bei Änderungen bitte Tests ergänzen und `cargo test --workspace` grün halten. Texte der Oberfläche sind deutsch, Datum und Zeit immer als `TT.MM.JJJJ` und 24 Stunden (keine nativen `type=date`/`type=time`-Felder).

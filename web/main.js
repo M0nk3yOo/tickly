@@ -2,7 +2,7 @@
 /* Tickly – Web-Oberfläche · Router, Rendering, Events (alle Daten kommen von der Rust-API) */
 
 const $ = s => document.querySelector(s);
-const ROUTES = ['setup', 'login', 'register', 'forgot', 'reset', 'verify', 'dashboard', 'day', 'stats', 'absences', 'companion', 'settings', 'admin'];
+const ROUTES = ['setup', 'login', 'register', 'forgot', 'reset', 'verify', 'emailchange', 'dashboard', 'day', 'stats', 'absences', 'companion', 'settings', 'admin'];
 const VIEWS = { dashboard: vDashboard, day: vDay, stats: vStats, absences: vAbsences, companion: vCompanion, settings: vSettings, admin: vAdmin };
 const DEMO_PW = 'demo-passwort';
 
@@ -12,7 +12,7 @@ function setPath(p, v) { const a = p.split('.'), l = a.pop(); a.reduce((o, k) =>
 function render() {
   const y = window.scrollY; LINES = [];
   hideTip();
-  $('#root').innerHTML = S.mfaGate ? vMfaGate() : S.route === 'forgot' ? vForgot() : S.route === 'reset' ? vReset() : S.route === 'verify' ? vVerify() : S.pwGate ? vPwGate() : S.route === 'setup' ? vSetup() : S.route === 'login' ? vLogin() : S.route === 'register' ? vRegister() : S.ready ? shell((VIEWS[S.route] || vDashboard)()) : '';
+  $('#root').innerHTML = S.mfaGate ? vMfaGate() : S.route === 'forgot' ? vForgot() : S.route === 'reset' ? vReset() : S.route === 'verify' || S.route === 'emailchange' ? vVerify() : S.pwGate ? vPwGate() : S.route === 'setup' ? vSetup() : S.route === 'login' ? vLogin() : S.route === 'register' ? vRegister() : S.ready ? shell((VIEWS[S.route] || vDashboard)()) : '';
   renderModalOnly();
   $('#demo').innerHTML = S.loggedIn && S.ready && S.demo ? demoPanel() : '';
   window.scrollTo(0, y);
@@ -34,7 +34,7 @@ async function route() {
   let r = (location.hash.replace(/^#\/?/, '') || 'dashboard').split('?')[0];
   if (!ROUTES.includes(r)) r = 'dashboard';
   if (S.loggedIn && !S.ready) { try { await reload(); } catch (e) { S.loggedIn = false; } }
-  const open = ['register', 'forgot', 'reset', 'verify'];
+  const open = ['register', 'forgot', 'reset', 'verify', 'emailchange'];
   // Noch kein Benutzer: nur die Ersteinrichtung ist erreichbar
   if (S.setup && !S.loggedIn) r = 'setup';
   else if (r === 'setup') r = S.loggedIn ? 'dashboard' : 'login';
@@ -46,6 +46,14 @@ async function route() {
     if (token && S.verifyToken !== token) {
       S.verifyToken = token; S.verify = { state: 'work' };
       api('POST', '/auth/verify', { token }).then(async r2 => { if (r2.status === 'active') { history.replaceState(null, '', '#/dashboard'); await enter(); } else { S.verify = { state: 'pending' }; render(); } }).catch(e => { S.verify = { state: 'error', msg: e.message }; render(); });
+    } else if (!token) S.verify = { state: 'error', msg: 'Der Link ist unvollständig.' };
+  }
+  // Link aus der Mail an die neue Adresse: übernimmt sie (einmalig), mit oder ohne Anmeldung
+  if (r === 'emailchange') {
+    const token = new URLSearchParams(location.hash.split('?')[1] || '').get('token');
+    if (token && S.emailToken !== token) {
+      S.emailToken = token; S.verify = { state: 'work' };
+      api('POST', '/auth/confirm-email', { token }).then(async r2 => { S.verify = { state: 'email', email: r2.email }; if (S.loggedIn) { try { await reload(); } catch (e) { /* egal */ } } render(); }).catch(e => { S.verify = { state: 'error', msg: e.message }; render(); });
     } else if (!token) S.verify = { state: 'error', msg: 'Der Link ist unvollständig.' };
   }
   if (r === 'admin' && isAdmin()) { try { await loadAdminTab(); } catch (e) { /* Liste bleibt leer */ } }
@@ -370,7 +378,7 @@ const H = {
   async cAct(el) {
     const k = el.dataset.k; if (k === 'newday') S.now = 7 * 60 + 58;
     await api('POST', '/companion', { kind: k, now: nowQ(), os: S.os });
-    toast({ newday: 'Neuer Arbeitstag – Rechnerstart ' + hm(S.now) + ' gemerkt', boot: 'Rechner gestartet', lock: 'Bildschirm gesperrt', unlock: 'Entsperrt', pause: 'Tracking pausiert – die Pause wird nicht gezählt', quit: 'Companion beendet – Tracking beendet', shutdown: 'Rechner heruntergefahren', start: 'Tracking läuft' }[k]); await sync();
+    toast({ newday: 'Neuer Arbeitstag – Rechnerstart ' + hm(S.now) + ' gemerkt', boot: 'Rechner gestartet', lock: 'Bildschirm gesperrt', unlock: 'Entsperrt', pause: 'Tracking pausiert – die Pause wird nicht gezählt', end: 'Tracking beendet – Arbeitsende gesetzt', quit: 'Companion beendet – Tracking beendet', shutdown: 'Rechner heruntergefahren', start: 'Tracking läuft' }[k]); await sync();
   },
   /* Zeiterfassung im Web: Beenden jetzt oder mit eigenem Ende, mit Vorschau von Brutto und Netto */
   async stopOpen(el) { S.modal = { type: 'stop', mode: el.dataset.m, at: Math.floor(S.now), prev: null, err: '' }; renderModalOnly(); await H.stopPreview(); },
@@ -461,7 +469,10 @@ const H = {
   pkDel(el) { const id = +el.dataset.id; confirmBox('Passkey entfernen?', 'Mit diesem Passkey ist danach keine Anmeldung mehr möglich.', 'Entfernen', async () => { await api('DELETE', '/passkeys/' + id); toast('Passkey entfernt'); await sync(); }); },
   pkRename(el) { const p = S.passkeys.find(x => x.id === +el.dataset.id); S.modal = { type: 'rename', id: p.id, name: p.name }; renderModalOnly(); },
   async renameOk() { const v = $('#rn-in').value.trim(), id = S.modal.id; if (v) await api('PUT', '/passkeys/' + id, { name: v }); closeModal(); await sync(); },
-  async saveMe() { await api('POST', '/me', { name: S.me.name, email: S.me.email }); toast('Profil gespeichert'); await sync(); },
+  async saveMe() {
+    const mail = S.me.email.trim(), r = await api('POST', '/me', { name: S.me.name, email: S.me.email });
+    toast(r.emailPending ? 'Bestätigungsmail an ' + mail + ' gesendet – die neue Adresse gilt erst nach dem Klick auf den Link' : 'Profil gespeichert'); await sync();
+  },
   /* Admin */
   async adminTab(el) { S.adminTab = el.dataset.v; await loadAdminTab(); render(); },
   async secTog() { S.sec.policy.enabled = !S.sec.policy.enabled; render(); await H.secSave(); },
@@ -512,7 +523,7 @@ const H = {
       S.modal = { type: 'adminpwDone', u: { name: u.name }, password: r.password, pwLogin: true, created: true }; renderModalOnly(); await sync(); return;
     }
     if (u.isNew) { const r = await api('POST', '/admin/users', body); toast(r.mailed ? 'Einladung per E-Mail gesendet an ' + u.email : 'Benutzer angelegt – ohne SMTP-Server wird keine Einladung verschickt'); }
-    else { await api('PUT', '/admin/users/' + u.id, body); toast('Benutzer gespeichert'); }
+    else { const r = await api('PUT', '/admin/users/' + u.id, body); toast(r.emailPending ? 'Benutzer gespeichert – Bestätigungsmail an ' + u.email.trim() + ' gesendet, die Adresse gilt erst danach' : 'Benutzer gespeichert'); }
     closeModal(); await sync();
   },
   async userStatus(el) {
@@ -598,7 +609,8 @@ setInterval(async () => {
   S.now = Math.min(1439.9, S.now + S.speed / 60); tickN++;
   const c = document.querySelector('.clockchip b'); if (c) c.textContent = hm(S.now);
   const rn = document.getElementById('ring-n'); if (rn) rn.textContent = durS(+rn.dataset.base + (rn.dataset.run === '1' ? S.now - +rn.dataset.at : 0));
-  if (!(S.speed > 1 || tickN % 10 === 0)) return;
+  // Auf der Companion-Seite öfter nachsehen: Geräte ändern ihre Einstellungen selbst (zum Beispiel im Companion)
+  if (!(S.speed > 1 || tickN % 10 === 0 || (S.route === 'companion' && !S.demo && tickN % 3 === 0))) return;
   // Der Companion prüft regelmäßig, ob ein Zeitfenster für den automatischen Start begonnen hat
   if (S.demo && S.day && ['ask', 'idle'].includes(S.day.stop) && S.set.autoTrack.enabled && !S.modal) {
     try { await api('POST', '/companion', { kind: 'tick', now: nowQ() }); await refreshToday(); } catch (e) { return fail(e); }

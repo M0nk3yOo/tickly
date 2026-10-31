@@ -48,7 +48,8 @@ Unbeaufsichtigte Einrichtung (z. B. per Skript): Umgebungsvariable `TICKLY_PAIR=
 |---|---|
 | Rechner startet | Companion startet mit (einstellbar im Fenster), meldet den Start. Im Zeitfenster beginnt das Tracking von selbst (je Gerät abschaltbar), sonst fragt er: **„Arbeitest du gerade?“** |
 | Fenster schließen (✕) | Nur ausblenden, der Companion läuft weiter im Infobereich bzw. in der Menüleiste. |
-| **Beenden** (Tray-Menü, Cmd+Q) | Das Tracking endet, das **Arbeitsende** wird gesetzt. |
+| **Tracking beenden** im Fenster/Tray | Arbeitsende wird gesetzt, der Companion läuft weiter. Aus einer Pause heraus endet der Tag am Beginn der Pause. **Tracking starten** setzt es später fort (die Lücke zählt nicht). |
+| **Tickly beenden** (Tray-Menü, Cmd+Q) | Das Tracking endet, das **Arbeitsende** wird gesetzt. |
 | Neustart/Herunterfahren während Tracking | Wird gemeldet; nach dem nächsten Start läuft das Tracking **von selbst weiter** (die Zeit dazwischen zählt nicht). |
 | Absturz, Stromausfall | Die Erfassung endet beim letzten Lebenszeichen (alle 30 s); beim nächsten Start geht es weiter. |
 | Bildschirm gesperrt, Ruhezustand | Wird als gesperrt erfasst (zählt als Pause, wenn länger als die eingestellte Mindestdauer). |

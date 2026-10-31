@@ -104,6 +104,7 @@ fn status_text(v: &Option<View>) -> String {
 struct Tray {
     status: MenuItem<tauri::Wry>,
     toggle: MenuItem<tauri::Wry>,
+    end: MenuItem<tauri::Wry>,
 }
 
 fn refresh_ui(app: &AppHandle, tray: &Tray) {
@@ -132,6 +133,7 @@ fn refresh_ui(app: &AppHandle, tray: &Tray) {
     };
     let _ = tray.toggle.set_text(label);
     let _ = tray.toggle.set_enabled(enabled);
+    let _ = tray.end.set_enabled(matches!(track.as_str(), "running" | "locked" | "paused"));
     if let Some(t) = app.tray_by_id("main") {
         let _ = t.set_tooltip(Some(status_text(&st.view)));
     }
@@ -189,6 +191,7 @@ fn unpair(sh: tauri::State<Arc<Shared>>) -> UiState {
 fn act(sh: tauri::State<Arc<Shared>>, kind: String, value: Option<String>) -> Result<UiState, String> {
     let a = match kind.as_str() {
         "pause" => Action::Pause,
+        "end" => Action::End,
         "resume" => Action::Resume,
         "answer" => Action::Answer(value.unwrap_or_default()),
         _ => return Err("Unbekannte Aktion".into()),
@@ -292,11 +295,12 @@ fn main() {
             // Tray
             let status = MenuItem::with_id(app, "status", status_text(&None), false, None::<&str>)?;
             let toggle = MenuItem::with_id(app, "toggle", "Tracking pausieren", false, None::<&str>)?;
+            let end = MenuItem::with_id(app, "end", "Tracking beenden", false, None::<&str>)?;
             let open = MenuItem::with_id(app, "open", "Fenster öffnen", true, None::<&str>)?;
             let dash = MenuItem::with_id(app, "dash", "Dashboard im Browser", true, None::<&str>)?;
             let settings = MenuItem::with_id(app, "settings", "Einstellungen im Browser", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "Tickly beenden", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&status, &PredefinedMenuItem::separator(app)?, &toggle, &open, &dash, &settings, &PredefinedMenuItem::separator(app)?, &quit_i])?;
+            let menu = Menu::with_items(app, &[&status, &PredefinedMenuItem::separator(app)?, &toggle, &end, &open, &dash, &settings, &PredefinedMenuItem::separator(app)?, &quit_i])?;
             // macOS: einfarbiges Symbol, das das System passend zur Menüleiste einfärbt (hell/dunkel); Windows: das farbige
             #[cfg(target_os = "macos")]
             let (tray_icon, as_template) = (tauri::include_image!("icons/tray-template.png"), true);
@@ -317,6 +321,11 @@ fn main() {
                                 e.action(Utc::now(), if track == "running" || track == "locked" { Action::Pause } else { Action::Resume });
                             }
                         }
+                        "end" => {
+                            if let Some(e) = sh.engine.lock().unwrap().as_mut() {
+                                e.action(Utc::now(), Action::End);
+                            }
+                        }
                         "open" => show_window(app),
                         "dash" => open_web(app, &sh, None),
                         "settings" => open_web(app, &sh, Some("settings")),
@@ -330,7 +339,7 @@ fn main() {
                     }
                 })
                 .build(app)?;
-            let tray = Tray { status, toggle };
+            let tray = Tray { status, toggle, end };
 
             // Nur beim ersten Start oder manuellen Öffnen zeigen; Autostart läuft still im Hintergrund
             if creds.is_none() || manual {

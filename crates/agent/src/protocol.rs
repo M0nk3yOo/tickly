@@ -68,6 +68,8 @@ pub struct ServerState {
     pub tracking: bool,
     pub since: Option<f64>,
     pub start: Option<f64>,
+    /// Zeitpunkt des Rechnerstarts (Minuten seit Mitternacht): so früh beginnt die Zählung bei „ab Rechnerstart“.
+    pub boot_at: Option<f64>,
     pub counted: f64,
     pub soll: f64,
     pub diff: f64,

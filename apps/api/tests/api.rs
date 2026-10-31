@@ -63,6 +63,7 @@ async fn fresh_db(demo: bool) -> String {
         include_str!("../migrations/0012_night_alerts.sql").hash(&mut h);
         include_str!("../migrations/0013_device_clash.sql").hash(&mut h);
         include_str!("../migrations/0014_device_auto_track.sql").hash(&mut h);
+        include_str!("../migrations/0015_pending_email.sql").hash(&mut h);
         include_str!("../migrations/0006_sessions_info.sql").hash(&mut h);
         include_str!("../migrations/0007_backup_kinds.sql").hash(&mut h);
         include_str!("../src/db.rs").hash(&mut h);
@@ -2208,6 +2209,7 @@ async fn the_automatic_tracking_start_can_be_switched_off_per_device() {
     let (st, _) = c.call(Method::PATCH, &format!("/api/devices/{id}"), Some(json!({"autoTrack": false}))).await;
     assert_eq!(st, StatusCode::OK);
     assert_eq!(c.get("/api/snapshot").await.1["devices"][0]["autoTrack"], false);
+    assert_eq!(c.get("/api/today").await.1["devices"][0]["autoTrack"], false, "die regelmäßige Abfrage liefert die Geräte mit");
     dev.call_h(Method::POST, "/api/device/events", Some(quit(2)), Some(&token)).await;
     let (_, r) = dev.call_h(Method::POST, "/api/device/events", Some(boot(3)), Some(&token)).await;
     assert_eq!(r["state"]["track"], "asking", "{r}");
@@ -2227,6 +2229,94 @@ async fn the_automatic_tracking_start_can_be_switched_off_per_device() {
     let mut other = Client::real().await;
     assert_eq!(other.login("chef@example.de", "Sehr-Langes-Passwort-42").await, StatusCode::OK);
     assert_eq!(other.call(Method::PATCH, &format!("/api/devices/{id}"), Some(json!({"autoTrack": false}))).await.0, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn the_companion_can_end_the_tracking_without_quitting() {
+    let mut c = Client::real().await;
+    assert_eq!(c.login("chef@example.de", "Sehr-Langes-Passwort-42").await, StatusCode::OK);
+    let code = c.post("/api/devices/pair-code", json!({})).await.1["code"].as_str().unwrap().to_string();
+    let mut dev = c.fresh();
+    dev.cookie = None;
+    let token = dev.post("/api/device/pair", json!({"code": code, "name": "Büro-PC", "os": "macos", "version": "1.0.0"})).await.1["token"].as_str().unwrap().to_string();
+    let at = chrono::Utc::now().to_rfc3339();
+    let ev = |seq: i64, kind: &str, extra: Value| { let mut v = json!({"seq": seq, "kind": kind, "at": at, "os": "macos"}); v.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone()); json!({"events": [v]}) };
+    let mut send = |seq: i64, kind: &str, extra: Value| { let b = ev(seq, kind, extra); let t = token.clone(); let mut d = dev.fresh(); d.cookie = None; async move { d.call_h(Method::POST, "/api/device/events", Some(b), Some(&t)).await.1 } };
+
+    let r = send(1, "boot", json!({})).await;
+    assert_eq!(r["state"]["track"], "asking", "{r}");
+    let r = send(2, "answer", json!({"answer": "work"})).await;
+    assert_eq!(r["state"]["track"], "running", "{r}");
+    // Beenden: Arbeitsende, die Weboberfläche zeigt den Tag als beendet
+    let r = send(3, "end", json!({})).await;
+    assert_eq!(r["results"][0]["ok"], true, "{r}");
+    assert_eq!(r["state"]["track"], "stopped");
+    assert_eq!(c.get("/api/today").await.1["day"]["tracking"], false);
+    // Zweimal beenden geht nicht, wieder starten schon
+    let r = send(4, "end", json!({})).await;
+    assert_eq!(r["results"][0]["ok"], false, "{r}");
+    let r = send(5, "start", json!({})).await;
+    assert_eq!(r["state"]["track"], "running", "{r}");
+    // Auch aus der Pause heraus lässt sich beenden
+    send(6, "pause", json!({})).await;
+    let r = send(7, "end", json!({})).await;
+    assert_eq!(r["results"][0]["ok"], true, "{r}");
+    assert_eq!(r["state"]["track"], "stopped");
+}
+
+#[tokio::test]
+async fn a_new_email_address_only_counts_after_the_link_in_the_mail_to_it_is_opened() {
+    let (port, inbox) = fake_smtp().await;
+    let mut c = Client::real().await;
+    assert_eq!(c.login("chef@example.de", "Sehr-Langes-Passwort-42").await, StatusCode::OK);
+    let me = |s: &Value| (s["me"]["email"].as_str().unwrap().to_string(), s["me"]["pendingEmail"].clone());
+    let id = c.get("/api/snapshot").await.1["me"]["id"].as_str().unwrap().to_string();
+
+    // Ohne Mailversand lässt sich keine neue Adresse bestätigen: abgelehnt, Name ändern geht weiter
+    let (st, r) = c.post("/api/me", json!({"name": "Chef Neu", "email": "chef.neu@example.de"})).await;
+    assert_eq!(st, StatusCode::BAD_REQUEST, "{r}");
+    assert!(r["error"].as_str().unwrap().contains("SMTP"));
+    assert_eq!(c.post("/api/me", json!({"name": "Chef Neu", "email": "chef@example.de"})).await.0, StatusCode::OK);
+    assert_eq!(c.get("/api/snapshot").await.1["me"]["name"], "Chef Neu");
+
+    // Mit SMTP: die Adresse bleibt, bis der Link an die neue Adresse geöffnet wird
+    assert_eq!(smtp_settings(&mut c, port, true).await, StatusCode::OK);
+    let (st, r) = c.post("/api/me", json!({"name": "Chef Neu", "email": "Chef.Neu@example.de"})).await;
+    assert_eq!((st, r["emailPending"].clone()), (StatusCode::OK, json!(true)), "{r}");
+    assert_eq!(me(&c.get("/api/snapshot").await.1), ("chef@example.de".into(), json!("Chef.Neu@example.de")));
+    let mails = wait_mails(&inbox, 1).await;
+    assert!(mails[0].contains("To: Chef.Neu@example.de") && mails[0].contains("Subject: Bitte bestätige deine neue E-Mail-Adresse"), "{}", &mails[0][..mails[0].len().min(600)]);
+    let t1 = token_in(&mails[0]);
+    assert!(mails[0].contains("#/emailchange?token="));
+
+    // Eine neue Anfrage ersetzt den alten Link; der Administrator-Weg gilt genauso
+    let (st, r) = c.put(&format!("/api/admin/users/{id}"), json!({"name": "Chef Neu", "email": "chef.zwei@example.de", "role": "admin", "week": 40})).await;
+    assert_eq!((st, r["emailPending"].clone()), (StatusCode::OK, json!(true)), "{r}");
+    assert_eq!(me(&c.get("/api/snapshot").await.1), ("chef@example.de".into(), json!("chef.zwei@example.de")));
+    let mails = wait_mails(&inbox, 2).await;
+    assert!(mails[1].contains("To: chef.zwei@example.de"));
+    let t2 = token_in(&mails[1]);
+    let mut anon = c.fresh();
+    anon.cookie = None;
+    assert_eq!(anon.post("/api/auth/confirm-email", json!({"token": t1})).await.0, StatusCode::BAD_REQUEST, "der alte Link gilt nicht mehr");
+    assert_eq!(anon.post("/api/auth/confirm-email", json!({"token": "falsch"})).await.0, StatusCode::BAD_REQUEST);
+
+    // Link öffnen (ohne Anmeldung): die Adresse wechselt, die bisherige erfährt davon
+    let (st, r) = anon.post("/api/auth/confirm-email", json!({"token": t2})).await;
+    assert_eq!((st, r["email"].clone()), (StatusCode::OK, json!("chef.zwei@example.de")), "{r}");
+    assert_eq!(me(&c.get("/api/snapshot").await.1), ("chef.zwei@example.de".into(), Value::Null));
+    assert_eq!(anon.post("/api/auth/confirm-email", json!({"token": t2})).await.0, StatusCode::BAD_REQUEST, "der Link gilt einmal");
+    let mails = wait_mails(&inbox, 3).await;
+    assert!(mails[2].contains("To: chef@example.de") && mails[2].contains("Subject: Deine Tickly-E-Mail-Adresse wurde geändert"), "{}", &mails[2][..mails[2].len().min(600)]);
+    assert_eq!(c.fresh().login("chef.zwei@example.de", "Sehr-Langes-Passwort-42").await, StatusCode::OK);
+
+    // Zurücknehmen: dieselbe Adresse wie bisher speichern
+    assert_eq!(c.post("/api/me", json!({"name": "Chef Neu", "email": "wieder.neu@example.de"})).await.0, StatusCode::OK);
+    let mails = wait_mails(&inbox, 4).await;
+    let t3 = token_in(&mails[3]);
+    assert_eq!(c.post("/api/me", json!({"name": "Chef Neu", "email": "chef.zwei@example.de"})).await.0, StatusCode::OK);
+    assert_eq!(me(&c.get("/api/snapshot").await.1), ("chef.zwei@example.de".into(), Value::Null));
+    assert_eq!(anon.post("/api/auth/confirm-email", json!({"token": t3})).await.0, StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]

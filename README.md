@@ -6,7 +6,7 @@ Eine kleine App auf Windows und macOS erkennt Arbeitsbeginn, Sperre, Pausen und 
 
 <p align="center"><img src="docs/screenshots/02-uebersicht.png" alt="Übersicht" width="860"></p>
 
-> **Stand: Version 0.9.11.** Server, Weboberfläche und macOS-Companion sind getestet.
+> **Stand: Version 0.9.12.** Server, Weboberfläche und macOS-Companion sind getestet.
 > Der **Windows-Teil der Companion-App ist geschrieben und wird in der CI übersetzt, wurde aber noch nicht auf einem echten Windows-Rechner ausgeführt**. Mehr unter [Bekannte Grenzen](#bekannte-grenzen).
 
 ## Was Tickly kann
@@ -106,4 +106,4 @@ Bitte vertraulich an **vuln@4reg.de** melden (kein öffentliches Issue), siehe [
 
 ## Lizenz
 
-[MIT](LICENSE) – frei nutzbar, veränderbar und weitergebbar, auch kommerziell. Beiträge sind willkommen (siehe [Entwicklung](docs/ENTWICKLUNG.md)).
+[GNU General Public License, Version 3 oder später](LICENSE) (GPL-3.0-or-later). Tickly darf frei genutzt, verändert und weitergegeben werden; wer es weitergibt, auch verändert, gibt den Quelltext unter derselben Lizenz mit. Die Versionen bis 0.9.11 wurden unter der MIT-Lizenz veröffentlicht, dafür gilt weiter diese. Beiträge sind willkommen (siehe [Entwicklung](docs/ENTWICKLUNG.md)).

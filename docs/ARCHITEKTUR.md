@@ -45,7 +45,7 @@ Ein Tag ist **ein** Datensatz: `segs` (Abschnitte `app`/`locked`/`off` in Minute
 
 1. **Koppeln:** `POST /api/device/pair {code, name, os, version}` → Token.
 2. **Ereignisse:** `POST /api/device/events {events:[{seq, kind, at, app?, os?, answer?}]}` mit `Authorization: Bearer`. `seq` steigt je Gerät immer weiter; der Server ignoriert bereits gesehene Nummern (**idempotent**). Die Antwort enthält den Zustand (`state`: Einstellungen, Tag, Salden, Zeitzone) – daraus übernimmt der Companion den Stand, wenn alles übertragen ist.
-3. Ereignisarten: `boot`, `beat` (alle 30 s), `lock`, `unlock`, `app`, `pause`, `start`, `answer`, `quit`, `shutdown`.
+3. Ereignisarten: `boot`, `beat` (alle 30 s), `lock`, `unlock`, `app`, `pause`, `start`, `end` (Tracking beenden, App läuft weiter), `answer`, `quit`, `shutdown`.
 4. Zeitstempel (`at`) sind die echten Zeitpunkte; der Server rechnet sie in Datum und Minuten der Zeitzone `TICKLY_TZ` um. Bis zu einer Stunde vorgehende Uhren werden auf die Serverzeit begrenzt, ältere als 14 Tage abgelehnt.
 5. Die Version steht im `User-Agent` (`tickly-companion/x.y.z`).
 

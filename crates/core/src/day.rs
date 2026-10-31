@@ -261,7 +261,7 @@ impl DayState {
         }
         let txt = match self.stop {
             Some(Stop::Pause) => format!("Tracking fortgesetzt · {} Min. Pause nicht gezählt", (now - self.ended.unwrap_or(now)).round()),
-            Some(Stop::Quit) | Some(Stop::Shutdown) => "Companion erneut gestartet · Lücke wird nicht als Arbeitszeit gezählt".to_string(),
+            Some(Stop::Quit) | Some(Stop::Shutdown) => "Tracking erneut gestartet · Lücke wird nicht als Arbeitszeit gezählt".to_string(),
             _ => "Tracking manuell gestartet".to_string(),
         };
         self.begin(now, now, txt);
@@ -329,6 +329,25 @@ impl DayState {
         self.stop = Some(Stop::Quit);
         self.declined = None;
         self.last_beat = Some(end);
+        Ok(())
+    }
+
+    /// Tracking im Companion beenden, ohne die App zu schließen: Arbeitsende (jetzt, bei einer Pause an deren Beginn).
+    /// Ein Start oder das Zeitfenster setzt es später wieder in Gang; die Lücke zählt nicht.
+    pub fn end_tracking(&mut self, now: f64) -> Result<(), &'static str> {
+        if self.tracking {
+            self.close_open(now);
+            self.tracking = false;
+            self.ended = Some(now);
+            self.ev(now, "quit", "Tracking im Companion beendet · Arbeitsende".into());
+        } else if self.stop == Some(Stop::Pause) && !self.segs.is_empty() {
+            let end = self.ended.unwrap_or(now);
+            self.ev(end, "quit", format!("Tracking im Companion beendet · Arbeitsende {} (Beginn der Pause)", hm(end)));
+        } else {
+            return Err("Es läuft kein Tracking.");
+        }
+        self.stop = Some(Stop::Quit);
+        self.declined = None;
         Ok(())
     }
 
@@ -437,7 +456,7 @@ pub fn events_from_segs(segs: &[Seg]) -> Vec<Event> {
 ///
 /// `day = None` heißt: heute gibt es noch keinen Tag; dann entsteht er je nach Zeitfenster (läuft, fragt oder bleibt aus).
 pub fn apply_event(day: &mut Option<DayState>, kind: &str, now: f64, os: &str, p: &Policy, app: Option<&str>, answer: Option<&str>) -> Result<(), String> {
-    const KINDS: [&str; 11] = ["boot", "newday", "beat", "lock", "unlock", "quit", "shutdown", "pause", "start", "answer", "tick"];
+    const KINDS: [&str; 12] = ["boot", "newday", "beat", "lock", "unlock", "quit", "shutdown", "pause", "start", "answer", "tick", "end"];
     if !KINDS.contains(&kind) && kind != "app" {
         return Err("Unbekanntes Ereignis".into());
     }
@@ -457,6 +476,7 @@ pub fn apply_event(day: &mut Option<DayState>, kind: &str, now: f64, os: &str, p
         "quit" => d.quit(now),
         "shutdown" => d.shutdown(now),
         "pause" => d.pause(now),
+        "end" => d.end_tracking(now),
         "start" => d.start_tracking(now),
         "answer" => d.answer(now, answer.unwrap_or("")),
         "tick" => { d.auto_tick(now, p); Ok(()) }

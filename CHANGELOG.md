@@ -1,5 +1,16 @@
 # Änderungen
 
+## 0.9.12
+
+Aktualisierung von 0.9.11: Die Datenbank wird beim Start automatisch angepasst (Migration 0015). Server und Companion gemeinsam aktualisieren (neues Ereignis `end`).
+
+- **Lizenz: GPL statt MIT.** Ab dieser Version steht Tickly unter der GNU General Public License, Version 3 oder später (`LICENSE`, Angaben in `Cargo.toml` und `package.json`). Bis 0.9.11 veröffentlichte Versionen bleiben unter MIT.
+- **E-Mail-Adressen müssen bestätigt werden:** Ändert ein Benutzer seine Adresse (im Profil) oder ein Administrator ändert sie, gilt die neue erst, wenn der Link in der Mail an die **neue** Adresse geöffnet wird (24 Stunden gültig). Bis dahin bleibt die bisherige Adresse, und die Änderung steht als „wartet auf Bestätigung“ im Profil und im Bearbeiten-Fenster. Danach erhält die bisherige Adresse eine Info-Mail. Ohne eingerichteten SMTP-Server wird eine Änderung abgelehnt (die Demo ist ausgenommen). Die Datenbank wird angepasst (Migration 0015).
+- **Serververwaltung:** Die Felder Rolle, Wochensoll und Überstunden-Übertrag im Fenster „Benutzer bearbeiten“ stehen jetzt in einer Flucht.
+- **Tracking beenden im Companion:** Neuer Knopf *Tracking beenden* im Fenster und im Tray-Menü. Er setzt das Arbeitsende, ohne die App zu schließen; *Tracking starten* setzt es später fort. Aus einer Pause heraus endet der Tag am Beginn der Pause.
+- **Rückfrage „Arbeitest du gerade?“ im Companion:** Die drei Antworten stehen in einer Zeile, und der Knopf für den rückwirkenden Start nennt die Uhrzeit des Rechnerstarts (*Ja, ab 07:52 Uhr*).
+- **Geräteliste aktualisiert sich selbst:** Ändert ein Companion seine Einstellung (zum Beispiel den automatischen Start), zeigt die Weboberfläche das nach wenigen Sekunden ohne Neuladen.
+
 ## 0.9.11
 
 Aktualisierung von 0.9.10: Die Datenbank wird beim Start automatisch angepasst (Migration 0014). Server und Companion sollten gemeinsam aktualisiert werden.

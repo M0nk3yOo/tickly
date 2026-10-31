@@ -7,6 +7,7 @@ export interface ServerState {
   track: Track;
   tracking: boolean;
   start: number | null;
+  bootAt?: number | null;
   since: number | null;
   counted: number;
   soll: number;
@@ -56,13 +57,13 @@ const mock: { s: UiState } = {
     server: "https://zeit.example.com",
     deviceName: "DESKTOP-ANDRE",
     userName: "André Becker",
-    version: "0.9.11",
+    version: "0.9.12",
     os: "windows",
     autostart: true,
     view: {
       connected: new URLSearchParams(location.search).get("offline") !== "1", unauthorized: false, error: null, pending: new URLSearchParams(location.search).get("offline") === "1" ? 14 : 0, estimated: new URLSearchParams(location.search).get("offline") === "1", locked: false, app: "VS Code", asOf: Date.now(),
       state: {
-        track: (new URLSearchParams(location.search).get("track") as Track) || "running", tracking: true, start: 472, since: 842,
+        track: (new URLSearchParams(location.search).get("track") as Track) || "running", tracking: true, start: new URLSearchParams(location.search).get("track") === "asking" ? null : 472, bootAt: 472, since: 842,
         counted: 357, soll: 480, diff: -123, balance: 1193, windowActive: true, dayOff: false, holiday: null,
         policy: { trackApps: true, trackLock: true, autoTrack: { enabled: true, ask: true }, deviceAuto: true },
       },
@@ -74,7 +75,7 @@ export const api = {
   get: (): Promise<UiState> => (inTauri ? invoke("get_view") : Promise.resolve(mock.s)),
   pair: (server: string, code: string): Promise<UiState> => (inTauri ? invoke("pair", { server, code }) : Promise.resolve(mock.s)),
   unpair: (): Promise<UiState> => (inTauri ? invoke("unpair") : Promise.resolve({ ...mock.s, paired: false })),
-  act: (kind: "pause" | "resume" | "answer", value?: string): Promise<UiState> => (inTauri ? invoke("act", { kind, value }) : Promise.resolve(mock.s)),
+  act: (kind: "pause" | "resume" | "end" | "answer", value?: string): Promise<UiState> => (inTauri ? invoke("act", { kind, value }) : Promise.resolve(mock.s)),
   /** Weboberfläche im Browser öffnen, auf Wunsch gleich die Einstellungen */
   dashboard: (page?: "settings"): Promise<void> => (inTauri ? invoke("open_dashboard", { page }) : Promise.resolve()),
   setAutostart: (on: boolean): Promise<UiState> => (inTauri ? invoke("set_autostart", { on }) : Promise.resolve({ ...mock.s, autostart: on })),

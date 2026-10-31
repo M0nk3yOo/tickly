@@ -44,6 +44,8 @@ pub struct UserRow {
     pub must_change_pw: bool,
     /// Der Überstunden-Stand zu Beginn ist festgelegt (vom Benutzer einmalig oder vom Administrator).
     pub start_bal_set: bool,
+    /// Neue Adresse, die noch per Link bestätigt werden muss.
+    pub pending_email: Option<String>,
 }
 
 #[derive(FromRow)]
@@ -418,5 +420,5 @@ pub async fn create_first_admin(app: &App, name: &str, email: &str, password: &s
 
 /* ---------- Hilfen für Antworten ---------- */
 pub fn me_json(u: &UserRow) -> Value {
-    json!({ "id": u.id, "name": u.name, "email": u.email, "role": u.role })
+    json!({ "id": u.id, "name": u.name, "email": u.email, "role": u.role, "pendingEmail": u.pending_email })
 }

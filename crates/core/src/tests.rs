@@ -207,6 +207,30 @@ fn pol(auto: Option<f64>, ask: bool) -> crate::Policy {
 }
 
 #[test]
+fn ending_the_tracking_in_the_companion_closes_the_day_and_start_continues_it() {
+    // Läuft: Arbeitsende jetzt
+    let mut day = DayState::boot(480.0, "Windows");
+    day.end_tracking(600.0).unwrap();
+    assert_eq!(day.track(), crate::Track::Stopped);
+    assert!(day.is_closed() && day.ended == Some(600.0));
+    assert!(day.end_tracking(601.0).is_err(), "nichts mehr zu beenden");
+    // Später wieder starten: die Lücke zählt nicht
+    day.start_tracking(660.0).unwrap();
+    assert!(day.tracking && day.events.last().unwrap().txt.contains("Lücke"));
+
+    // Pausiert: das Arbeitsende ist der Beginn der Pause
+    let mut day = DayState::boot(480.0, "Windows");
+    day.pause(540.0).unwrap();
+    day.end_tracking(600.0).unwrap();
+    assert!(day.is_closed() && day.ended == Some(540.0), "{:?}", day.ended);
+    assert_eq!(day.track(), crate::Track::Stopped);
+
+    // Ohne laufendes Tracking (Rückfrage offen) gibt es nichts zu beenden
+    let mut day = DayState::new_day(480.0, "Windows", &pol(None, true));
+    assert!(day.end_tracking(500.0).is_err());
+}
+
+#[test]
 fn pause_stops_counting_and_resumes_without_gap_time() {
     let mut day = DayState::boot(480.0, "Windows");
     day.pause(540.0).unwrap();
