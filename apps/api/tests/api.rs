@@ -67,6 +67,8 @@ async fn fresh_db(demo: bool) -> String {
         include_str!("../migrations/0006_sessions_info.sql").hash(&mut h);
         include_str!("../migrations/0007_backup_kinds.sql").hash(&mut h);
         include_str!("../src/db.rs").hash(&mut h);
+        // Das Konto der Vorlage trägt das Anlegedatum: eine Vorlage von gestern ließe „heute“ in den Tests abweichen
+        chrono::Utc::now().date_naive().to_string().hash(&mut h);
         h.finish() % 1_000_000_000
     };
     let tpl = format!("tickly_tpl_{}_{sig}", if demo { "demo" } else { "real" });
