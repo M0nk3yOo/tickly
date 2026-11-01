@@ -2186,7 +2186,13 @@ async fn the_automatic_tracking_start_can_be_switched_off_per_device() {
     // Ein Zeitfenster, das immer gilt, damit der Test nicht von der Uhrzeit abhängt
     let mut set = c.get("/api/snapshot").await.1["settings"].clone();
     set["autoTrack"] = json!({"enabled": true, "ask": true, "windows": [{"days": [true, true, true, true, true, true, true], "from": 0, "to": 1440}]});
+    // Ein Land mit wenigen Feiertagen (an freien Tagen startet nichts von selbst)
+    set["state"] = json!("BE");
     assert_eq!(c.put("/api/settings", set).await.0, StatusCode::OK);
+    if c.get("/api/today").await.1["dayOff"] == true {
+        eprintln!("übersprungen: heute ist ein Feiertag, an dem das Tracking nie von selbst startet");
+        return;
+    }
     async fn pair(c: &mut Client, name: &str) -> (Client, String, String) {
         let code = c.post("/api/devices/pair-code", json!({})).await.1["code"].as_str().unwrap().to_string();
         let mut dev = c.fresh();
