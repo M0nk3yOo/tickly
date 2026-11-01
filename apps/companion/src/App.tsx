@@ -57,8 +57,15 @@ function Header({ s }: { s: UiState }) {
   );
 }
 
+/** Der Tickly-Dienst, mit dem sich der Companion ohne weitere Angaben verbindet. */
+const HOSTED = "tickly.m-hause.de";
+const sameServer = (a: string, b: string) => a.trim().replace(/^https?:\/\//i, "").replace(/\/+$/, "").toLowerCase() === b;
+
 function Pair({ s, set }: { s: UiState; set: (s: UiState) => void }) {
-  const [server, setServer] = useState(s.server || "");
+  // Ein früher eingetragener fremder Server bleibt als „Self-hosted“ vorgewählt
+  const [own, setOwn] = useState(!!s.server && !sameServer(s.server, HOSTED));
+  const [custom, setCustom] = useState(own ? s.server : "");
+  const server = own ? custom : `https://${HOSTED}`;
   const [code, setCode] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -81,13 +88,22 @@ function Pair({ s, set }: { s: UiState; set: (s: UiState) => void }) {
           <h1>Gerät koppeln</h1>
           <p className="muted">Öffne Tickly im Browser, gehe zu <b>Companion-App</b> und erzeuge einen Kopplungscode.</p>
         </div>
-        <label>
-          Server-Adresse
-          <input value={server} onChange={(e) => setServer(e.target.value)} placeholder="zeit.example.com" autoCapitalize="off" spellCheck={false} />
-        </label>
+        <div className="seg" role="radiogroup" aria-label="Server">
+          <button type="button" role="radio" aria-checked={!own} className={own ? "" : "on"} onClick={() => setOwn(false)}>Tickly-Dienst</button>
+          <button type="button" role="radio" aria-checked={own} className={own ? "on" : ""} onClick={() => setOwn(true)}>Self-hosted</button>
+        </div>
+        {own ? (
+          <label>
+            Server-Adresse
+            <input value={custom} onChange={(e) => setCustom(e.target.value)} placeholder="zeit.example.com" autoCapitalize="off" spellCheck={false} autoFocus />
+            <span className="muted xs">Die Adresse deines eigenen Tickly-Servers.</span>
+          </label>
+        ) : (
+          <p className="muted xs">Der Companion verbindet sich mit {HOSTED}.</p>
+        )}
         <label>
           Kopplungscode
-          <input className="code" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="ABCD-EFGH" maxLength={9} spellCheck={false} onKeyDown={(e) => e.key === "Enter" && server && code && go()} />
+          <input className="code" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="ABCD-EFGH" maxLength={9} spellCheck={false} onKeyDown={(e) => e.key === "Enter" && server.trim() && code.trim().length >= 8 && go()} />
         </label>
         {err && <div className="callout bad">{err}</div>}
         <button className="btn primary" disabled={busy || !server.trim() || code.trim().length < 8} onClick={go}>

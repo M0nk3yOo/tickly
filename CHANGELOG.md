@@ -1,5 +1,11 @@
 # Änderungen
 
+## 0.9.13
+
+Aktualisierung von 0.9.12: keine Änderung am Server, nur der Companion ist neu.
+
+- **Companion: Tickly-Dienst oder Self-hosted.** Beim Koppeln ist standardmäßig der Tickly-Dienst (`tickly.m-hause.de`) gewählt, die Adresse muss nicht eingegeben werden. Mit **Self-hosted** trägt man die Adresse des eigenen Servers ein. Ein schon eingetragener fremder Server bleibt als Self-hosted vorgewählt.
+
 ## 0.9.12
 
 Aktualisierung von 0.9.11: Die Datenbank wird beim Start automatisch angepasst (Migration 0015). Server und Companion gemeinsam aktualisieren (neues Ereignis `end`).

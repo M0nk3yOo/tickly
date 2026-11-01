@@ -36,7 +36,7 @@ macOS braucht **keine** Zusatzrechte (weder „Bedienungshilfen“ noch „Bilds
 ## Koppeln
 
 1. In der Weboberfläche: **Companion-App → Kopplungscode erzeugen** (gilt 10 Minuten, einmal verwendbar).
-2. Companion starten, **Server-Adresse** (z. B. `zeit.example.com`) und **Code** eingeben → *Koppeln*.
+2. Companion starten. Voreingestellt ist **Tickly-Dienst** (`tickly.m-hause.de`): nur den **Code** eingeben → *Koppeln*. Wer einen eigenen Server betreibt, wählt **Self-hosted** und trägt dessen **Server-Adresse** ein (z. B. `zeit.example.com`).
 
 Das Gerät erhält ein eigenes Token (unter **macOS** in einer Datei, die nur dein Benutzer lesen kann, **nicht** im Schlüsselbund; unter **Windows** in der **Anmeldeinformationsverwaltung**). In der Weboberfläche und von Administratoren lässt sich die Kopplung jederzeit aufheben.
 

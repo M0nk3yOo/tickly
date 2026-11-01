@@ -54,3 +54,6 @@ input.code { font-size: 22px; letter-spacing: 0.14em; text-align: center; font-v
 .switch.on { background: var(--brand); }
 .switch.on::after { left: 20px; }
 .switch:disabled { opacity: 0.5; cursor: default; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; gap: 3px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); }
+.seg button { font: inherit; font-weight: 600; font-size: 13px; padding: 8px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--ink-2); cursor: pointer; }
+.seg button.on { background: var(--bg); color: var(--ink); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); }
