@@ -1,5 +1,11 @@
 # Änderungen
 
+## 0.9.14
+
+Aktualisierung von 0.9.13: Es ändert sich nur die Weboberfläche (keine Datenbankänderung). Der Companion ist funktional unverändert, ein Update ist nicht nötig.
+
+- **Zeiten bearbeiten neu gestaltet.** Programmwechsel erscheinen nicht mehr als einzelne Einträge: Ein Eintrag ist die Zeit zwischen zwei Unterbrechungen (Rechnerstart, Pause, Sperre, Ende), die Programme darin stehen als Etiketten. Neue und verschobene Einträge **ersetzen, was an ihrer Stelle steht** – eine Pause von 12:00 bis 12:30 in einer Tagesbuchung von 7 bis 16 Uhr teilt sie in 7–12 und 12:30–16 Uhr. Neu: ein Formular **Eintrag hinzufügen** mit Art (Arbeitszeit oder Pause), Zeiten (mit Uhrzeit-Auswahl in 24 Stunden), Bezeichnung und Notiz und einer Vorschau, was ersetzt wird, Zeitleiste als Vorschau, Dauer je Eintrag, Summen im Fuß und bei Lücken (Rechner aus, Termin vor Ort, Löschen) die Schaltflächen **Nachbuchen** (Formular mit den Zeiten der Lücke) und **Als Arbeitszeit füllen**. Das Fenster zeichnet sich bei Änderungen ohne Flackern neu, Fokus und Scrollstand bleiben erhalten.
+
 ## 0.9.13
 
 Aktualisierung von 0.9.12: keine Änderung am Server, nur der Companion ist neu.

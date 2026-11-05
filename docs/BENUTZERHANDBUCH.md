@@ -59,10 +59,18 @@ Bis du antwortest, läuft die Zeit weiter. Nichts wird von selbst beendet.
 
 ![Zeiten bearbeiten](screenshots/04-tagesansicht-bearbeiten.png)
 
-**Zeiten bearbeiten** (bzw. **Zeit eintragen** an einem leeren Tag) öffnet die Abschnitte des Tages. Du kannst Von/Bis ändern, Abschnitte löschen und mit **Eintrag hinzufügen** Zeit ergänzen (z. B. einen Termin ohne Rechner; Bezeichnung „Manuell“ plus Notiz). Regeln:
+**Zeiten bearbeiten** (bzw. **Zeit eintragen** an einem leeren Tag) zeigt den Tag als Zeitleiste und als Liste von **Einträgen**. Ein Eintrag ist die Zeit zwischen zwei Unterbrechungen (Rechnerstart, Pause, Sperre, Ende), **Programmwechsel dazwischen machen keinen eigenen Eintrag**; welche Programme darin liefen, steht als Etiketten im Eintrag. Du kannst:
 
-- Abschnitte dürfen sich nicht überschneiden und nicht in der Zukunft liegen. Heute bleibt der **laufende** Abschnitt unverändert.
-- Lücken zählen nicht als Arbeitszeit; Pausen werden wie gewohnt abgezogen.
+- **Von/Bis ändern:** Der Eintrag wird kürzer oder länger. Verlängerte Zeit gilt als „Manuell“.
+- **Art und Bezeichnung ändern:** *Arbeitszeit* oder *Pause*, bei Arbeitszeit mit eigener Bezeichnung und Notiz (z. B. „Kundentermin“).
+- **Eintrag hinzufügen:** Im Formular stellst du die **Art** ein (*Arbeitszeit* mit Bezeichnung und Notiz, z. B. ein Kundentermin ohne Rechner, oder *Pause*) und die Zeiten. Neben **Von** und **Bis** öffnet das Uhr-Symbol eine Auswahl für Stunde (24 Stunden) und Minute (5-Minuten-Schritte); minutengenau tippst du die Zeit ins Feld. Das Formular schlägt eine Stunde nach dem letzten Eintrag vor (es sucht keine Lücken; die Zeiten sind frei wählbar) und zeigt vor dem Einfügen, ob dabei bestehende Zeit ersetzt wird. Ein neuer Eintrag **ersetzt, was an seiner Stelle steht**: Trägst du bei einer Tagesbuchung von 7 bis 16 Uhr eine Pause von 12:00 bis 12:30 ein, wird daraus 7–12 Uhr, die Pause und 12:30–16 Uhr. Dasselbe gilt, wenn du die Zeiten eines Eintrags über einen anderen schiebst.
+- **Lücken nachbuchen:** Wo nichts getrackt wurde (Rechner heruntergefahren, Termin beim Kunden, gelöschter Eintrag), steht in der Liste eine **Lücke**; sie zählt nicht als Arbeitszeit. **Nachbuchen** öffnet das Formular mit den Zeiten der Lücke, du wählst Art, Bezeichnung (z. B. „Kunde Müller“) und Notiz und kannst die Zeiten anpassen, wenn du nur einen Teil buchen willst. **Als Arbeitszeit füllen** trägt die ganze Lücke sofort als „Manuell“ ein.
+
+Regeln:
+
+- Einträge liegen nicht in der Zukunft. Heute bleibt der **laufende** Abschnitt unverändert; davor muss alles enden.
+- Eine Pause zählt wie eine Bildschirmsperre: Ab der eingestellten Mindestdauer (Standard 15 Minuten) wird sie als Pause abgezogen, sonst nur als Zeit ohne Arbeit; der Hinweis steht in der Zeile.
+- Gespeichert wird erst mit **Speichern**; die Zeile darunter zeigt Arbeitszeit, Pausen und Lücken.
 - Der Administrator legt fest, wie viele Tage rückwirkend das erlaubt ist (Standard 90). Jede Änderung steht im Protokoll.
 
 ## Statistik

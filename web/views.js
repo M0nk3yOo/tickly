@@ -449,28 +449,80 @@ function vDashboard() {
 /* ---------- Tagesansicht ---------- */
 /* Nachträgliches Bearbeiten: erlaubt für Tage bis zur vom Administrator eingestellten Zahl zurück */
 const canEditDay = d => S.limits.editDaysBack > 0 && d <= TODAY && d >= TRACK_START && diffDays(d, TODAY) <= S.limits.editDaysBack;
-function editProblems(rows) {
-  const err = [], list = rows.filter(r => !r.open).map((r, i) => ({ ...r, i })).sort((a, b) => a.from - b.from), open = rows.find(r => r.open);
-  list.forEach(r => { if (!(r.to > r.from)) err.push(`${hm(r.from)}–${hm(r.to)}: „Bis“ muss nach „Von“ liegen`); if (r.to > 1440) err.push('Uhrzeiten dürfen höchstens 24:00 sein'); });
-  for (let k = 1; k < list.length; k++) if (list[k].from < list[k - 1].to - 1e-6) err.push(`${hm(list[k - 1].from)}–${hm(list[k - 1].to)} überschneidet sich mit ${hm(list[k].from)}–${hm(list[k].to)}`);
-  if (open && list.length && list[list.length - 1].to > open.from + 1e-6) err.push(`Der laufende Abschnitt beginnt um ${hm(open.from)} – davor muss alles enden`);
-  return [...new Set(err)];
+/* Zeitleiste im Bearbeiten-Fenster: Arbeit nach App gefärbt, Pausen schraffiert, Lücken gestrichelt */
+function editTimeline(segs, gaps, openFrom) {
+  const all = [...segs, ...gaps];
+  if (openFrom != null) all.push({ from: openFrom, to: openFrom + 1 });
+  const lo = Math.min(...all.map(x => x.from)), hi = Math.max(...all.map(x => x.to));
+  const from = Math.max(0, Math.floor((lo - 30) / 60) * 60), to = Math.min(1440, Math.max(Math.ceil((hi + 30) / 60) * 60, from + 6 * 60)), W = to - from;
+  const L = m => ((m - from) / W * 100).toFixed(3), Wd = (a, b) => ((b - a) / W * 100).toFixed(3), ticks = tlAxis(from, to);
+  const bars = segs.map(g => g.kind === 'app'
+    ? `<i class="sg" style="left:${L(g.from)}%;width:${Wd(g.from, g.to)}%;background:var(${appOf(g.app).c})" ${tipAttr(dur(g.to - g.from), `${appName(g.app)} · ${hm(g.from)}–${hm(g.to)}${g.note ? ' · ' + g.note : ''}`)}></i>`
+    : `<i class="sg locked" style="left:${L(g.from)}%;width:${Wd(g.from, g.to)}%" ${tipAttr(dur(g.to - g.from), `Pause · ${hm(g.from)}–${hm(g.to)}`)}></i>`).join('')
+    + gaps.map(g => `<i class="sg gap" style="left:${L(g.from)}%;width:${Wd(g.from, g.to)}%" ${tipAttr(dur(g.to - g.from), `Lücke · ${hm(g.from)}–${hm(g.to)} · wird nicht gezählt`)}></i>`).join('');
+  return `<div class="tl mini de-tl"><div class="tl-labels"></div><div class="tl-plot"><div class="tl-grid">${ticks.map(x => `<i style="left:${L(x)}%"></i>`).join('')}</div>
+    <div class="tl-track">${bars}${openFrom != null ? `<i class="sg run" style="left:${L(openFrom)}%;right:0" ${tipAttr('Läuft noch', `ab ${hm(openFrom)} · wird vom Companion geführt`)}></i>` : ''}</div>
+    <div class="tl-axis">${ticks.map(x => `<span style="left:${L(x)}%">${pad(x / 60)}</span>`).join('')}</div></div></div>`;
+}
+const deTime = (b, f, v) => `<input type="text" class="ttxt" inputmode="numeric" placeholder="HH:MM" maxlength="5" autocomplete="off" aria-label="${f === 'from' ? 'Von' : 'Bis'}" value="${hm(v)}" data-de="${f}" data-b="${b}">`;
+/* Formular „Neuer Eintrag“ im Bearbeiten-Fenster: Art (Arbeitszeit oder Pause), Zeiten, Bezeichnung, Notiz */
+function daInfo(m) {
+  const a = m.add, err = deLimit(m, a.from, a.to);
+  if (err) return { err, html: esc(err) };
+  const over = deOverlap(m.segs, a.from, a.to, -1);
+  return { err: null, html: over >= 1 ? `${ic('info', 14)} Ersetzt ${dur(over)} bestehender Zeit – ein Eintrag, der dort liegt, wird geteilt oder gekürzt.` : `${ic('check', 14)} Passt in freie Zeit, nichts wird ersetzt.` };
+}
+function daForm(m) {
+  const a = m.add, info = daInfo(m), pause = a.kind === 'locked';
+  const tf = (f, v) => `<span class="tfield"><input type="text" class="ttxt" inputmode="numeric" placeholder="HH:MM" maxlength="5" autocomplete="off" aria-label="${f === 'from' ? 'Von' : 'Bis'}" value="${hm(v)}" data-da="${f}"><button type="button" class="ibtn tpick ${m.tp === f ? 'on' : ''}" data-a="daPick" data-f="${f}" title="Uhrzeit wählen" aria-label="Uhrzeit wählen" aria-expanded="${m.tp === f}">${ic('day', 16)}</button></span>`;
+  const panel = () => { const f = m.tp, v = a[f], h = Math.floor(v / 60), mi = Math.round(v % 60);
+    return `<div class="tpanel"><div class="tp-h"><b>${f === 'from' ? 'Von' : 'Bis'}</b><span class="mono">${hm(v)}</span><button class="ibtn right" data-a="daPick" data-f="${f}" title="Schließen">${ic('x', 14)}</button></div>
+      <div class="tp-l">Stunde</div><div class="tp-g h">${Array.from({ length: 24 }, (_, i) => `<button type="button" class="${i === h ? 'on' : ''}" data-a="daTime" data-p="h" data-v="${i}">${pad(i)}</button>`).join('')}</div>
+      <div class="tp-l">Minute</div><div class="tp-g m">${Array.from({ length: 12 }, (_, i) => i * 5).map(i => `<button type="button" class="${i === mi ? 'on' : ''}" data-a="daTime" data-p="m" data-v="${i}">${pad(i)}</button>`).join('')}</div>
+      <div class="tp-n">Minutengenau: die Zeit oben im Feld eintippen.</div></div>`; };
+  return `<div class="de-add"><div class="row between"><b>Neuer Eintrag</b><button class="ibtn" data-a="daClose" title="Schließen">${ic('x', 15)}</button></div>
+    <div class="de-addgrid">
+      <div class="f"><span>Art</span><div class="seg"><button data-a="daKind" data-v="app" class="${pause ? '' : 'on'}">Arbeitszeit</button><button data-a="daKind" data-v="locked" class="${pause ? 'on' : ''}">${ic('coffee', 13)} Pause</button></div></div>
+      <label class="f"><span>Von</span>${tf('from', a.from)}</label>
+      <label class="f"><span>Bis</span>${tf('to', a.to)}</label>
+      <span class="de-dur mono muted" id="da-dur">${a.to > a.from ? dur(a.to - a.from) : ''}</span>
+      ${pause ? `<div class="f grow"><span>&nbsp;</span><span class="muted xs">${!S.set.lockAsBreak ? 'Zählt nicht als Pause (Einstellung)' : `Ab ${S.set.chunk} Minuten wird sie als Pause abgezogen.`}</span></div>`
+        : `<label class="f grow"><span>App / Bezeichnung</span><input type="text" list="app-names" value="${esc(a.app)}" placeholder="Manuell" maxlength="64" data-da="app"></label>
+      <label class="f grow"><span>Notiz</span><input type="text" value="${esc(a.note)}" placeholder="z. B. Kundentermin" maxlength="200" data-da="note"></label>`}
+    </div>
+    ${m.tp ? panel() : ''}
+    <div class="de-addfoot"><span class="de-hint ${info.err ? 'bad' : ''}" id="da-hint">${info.html}</span><button class="btn primary sm" id="da-ok" data-a="daSubmit" ${info.err ? 'disabled' : ''}>${ic('plus', 14)} Eintrag einfügen</button></div></div>`;
 }
 function dayEditModal(m) {
-  const err = editProblems(m.rows), work = m.rows.filter(r => r.kind === 'app' && !r.open && r.to > r.from).reduce((a, r) => a + r.to - r.from, 0);
-  return `<div class="ov"><div class="modal" style="width:min(900px,100%)"><div class="mh"><h3>Zeiten bearbeiten · ${dLong(m.date)}</h3><button class="ibtn right" data-a="modalClose">${ic('x')}</button></div>
-    <div class="mb"><p class="hint">Hier lassen sich erfasste Abschnitte korrigieren, löschen oder neue Zeiten ergänzen (z. B. ein Termin ohne Rechner). Lücken zwischen Abschnitten zählen nicht als Arbeitszeit, Pausen werden wie gewohnt abgezogen. Die Änderung wird im Protokoll festgehalten.</p>
-      <div class="tbwrap"><table class="tb edit-tb"><thead><tr><th>Von</th><th>Bis</th><th>Art</th><th>App / Bezeichnung</th><th>Notiz</th><th></th></tr></thead><tbody>
-      ${m.rows.map((r, i) => r.open ? `<tr class="muted"><td>${hm(r.from)}</td><td colspan="4">läuft noch – wird vom Companion geführt</td><td></td></tr>` : `<tr><td>${timeField(`modal.rows.${i}.from`, r.from)}</td><td>${timeField(`modal.rows.${i}.to`, r.to)}</td>
-        <td><select data-in="modal.rows.${i}.kind" data-rm="1"><option value="app" ${r.kind === 'app' ? 'selected' : ''}>Arbeitszeit</option><option value="locked" ${r.kind === 'locked' ? 'selected' : ''}>Gesperrt</option></select></td>
-        <td>${r.kind === 'app' ? `<input type="text" list="app-names" value="${esc(r.app || '')}" placeholder="Manuell" data-in="modal.rows.${i}.app" data-nr="1" maxlength="64">` : '<span class="muted">–</span>'}</td>
-        <td>${r.kind === 'app' ? `<input type="text" value="${esc(r.note || '')}" placeholder="z. B. Kundentermin" data-in="modal.rows.${i}.note" data-nr="1" maxlength="200">` : ''}</td>
-        <td><button class="ibtn" data-a="dayEditDel" data-i="${i}" title="Abschnitt entfernen">${ic('trash', 16)}</button></td></tr>`).join('') || '<tr><td colspan="6" class="muted" style="text-align:center;padding:16px">Keine Abschnitte – mit „Eintrag hinzufügen“ Zeit ergänzen.</td></tr>'}
+  const rows = DayEdit.blocks(m.segs), gaps = DayEdit.gaps(rows, m.open), sum = DayEdit.sums(m.segs), gapMin = gaps.reduce((a, g) => a + g.to - g.from, 0);
+  const dirty = JSON.stringify(DayEdit.out(m.segs)) !== m.orig;
+  // Lücken stehen vor dem Eintrag, der nach ihnen beginnt; die letzte (bis zum laufenden Abschnitt) am Ende
+  const items = [];
+  rows.forEach(r => { const g = gaps.find(x => Math.abs(x.to - r.from) < DayEdit.EPS); if (g) items.push({ gap: g }); items.push({ r }); });
+  gaps.filter(g => !items.some(x => x.gap === g)).forEach(g => items.push({ gap: g }));
+  const row = r => {
+    const pause = r.kind === 'locked', one = r.apps.length === 1, l = r.to - r.from;
+    const what = pause ? `<span class="muted">${ic('coffee', 15)} Pause</span>`
+      : one ? `<input type="text" list="app-names" value="${esc(appName(r.apps[0].app))}" placeholder="Manuell" data-de="app" data-b="${r.b}" maxlength="64" aria-label="App oder Bezeichnung">`
+      : `<div class="de-apps" title="Mehrere Programme in diesem Eintrag – die Zeiten oben ändern nur Beginn und Ende">${r.apps.slice(0, 2).map(a => `<span class="de-app">${appIcon(a.app, 16)}${esc(appName(a.app))}<small>${durN(a.min)}</small></span>`).join('')}${r.apps.length > 2 ? `<span class="muted xs">+${r.apps.length - 2}</span>` : ''}</div>`;
+    const note = pause ? `<span class="muted xs">${!S.set.lockAsBreak ? 'zählt nicht als Pause (Einstellung)' : l < S.set.chunk ? `kürzer als ${S.set.chunk} Min. – zählt nicht als Pause` : 'wird als Pause abgezogen'}</span>`
+      : `<input type="text" value="${esc(r.note || '')}" placeholder="z. B. Kundentermin" data-de="note" data-b="${r.b}" maxlength="200" aria-label="Notiz">`;
+    return `<tr class="${pause ? 'de-pause' : 'de-work'}${m.flash === r.b ? ' flash' : ''}"><td>${deTime(r.b, 'from', r.from)}</td><td>${deTime(r.b, 'to', r.to)}</td><td class="mono muted">${dur(l)}</td>
+      <td><select data-de="kind" data-b="${r.b}" aria-label="Art"><option value="app" ${pause ? '' : 'selected'}>Arbeitszeit</option><option value="locked" ${pause ? 'selected' : ''}>Pause</option></select></td>
+      <td>${what}</td><td>${note}</td><td><button class="ibtn" data-a="deDel" data-b="${r.b}" title="Eintrag entfernen">${ic('trash', 16)}</button></td></tr>`;
+  };
+  const gap = g => `<tr class="de-gap"><td colspan="7"><div class="de-gapbox">${ic('day', 16)}<span class="grow"><b>Lücke ${hm(g.from)}–${hm(g.to)}</b> · ${dur(g.to - g.from)} werden nicht gezählt<small>Kein Tracking in dieser Zeit, z. B. Rechner aus oder ein Termin vor Ort</small></span><button class="btn sm primary" data-a="deBook" data-from="${g.from}" data-to="${g.to}" title="Eintrag für diese Zeit anlegen: Art, Bezeichnung und Notiz wählst du selbst">${ic('edit', 13)} Nachbuchen</button><button class="btn sm" data-a="deFill" data-from="${g.from}" data-to="${g.to}" title="Die Lücke sofort als Arbeitszeit „Manuell“ füllen">${ic('plus', 13)} Als Arbeitszeit füllen</button></div></td></tr>`;
+  const body = items.map(x => x.gap ? gap(x.gap) : row(x.r)).join('') + (m.open != null ? `<tr class="muted"><td>${hm(m.open)}</td><td colspan="6">läuft noch – wird vom Companion geführt</td></tr>` : '');
+  return `<div class="ov"><div class="modal de" style="width:min(940px,100%)"><div class="mh"><h3>Zeiten bearbeiten · ${dLong(m.date)}</h3><button class="ibtn right" data-a="modalClose">${ic('x')}</button></div>
+    <div class="mb"><p class="hint">Jeder Eintrag fasst die Zeit zwischen zwei Unterbrechungen zusammen – Programmwechsel darin bleiben erhalten. Ein neuer Eintrag ersetzt, was an seiner Stelle steht: eine Pause mitten im Arbeitstag teilt ihn in zwei Teile. Lücken zählen nicht als Arbeitszeit.</p>
+      ${rows.length ? `<div class="de-tlbox">${editTimeline(m.segs, gaps, m.open)}<div class="legend"><span><i style="background:var(--brand)"></i>Arbeitszeit (Farbe = Programm)</span><span><i class="hatch"></i>Pause</span><span><i class="dash"></i>Lücke</span></div></div>` : ''}
+      <div class="tbwrap"><table class="tb edit-tb"><thead><tr><th>Von</th><th>Bis</th><th>Dauer</th><th>Art</th><th>App / Bezeichnung</th><th>Notiz</th><th></th></tr></thead><tbody>
+      ${body || '<tr><td colspan="7" class="muted" style="text-align:center;padding:18px">Keine Einträge – mit „Eintrag hinzufügen“ Zeit ergänzen.</td></tr>'}
       </tbody></table></div>
       <datalist id="app-names">${Object.values(APPS).filter(a => a.n !== 'Sonstiges').map(a => `<option value="${esc(a.n)}">`).join('')}<option value="Manuell"></datalist>
-      <div class="row between"><button class="btn sm" data-a="dayEditAdd">${ic('plus', 14)} Eintrag hinzufügen</button><span class="muted sm">Arbeitszeit der Einträge: <b class="mono">${dur(work)}</b></span></div>
-      ${err.length ? `<div class="callout bad">${ic('info')}<div>${err.map(esc).join('<br>')}</div></div>` : ''}</div>
-    <div class="mf"><button class="btn" data-a="modalClose">Abbrechen</button><button class="btn primary" data-a="dayEditSave" ${err.length ? 'disabled' : ''}>Speichern</button></div></div></div>`;
+      ${m.add ? daForm(m) : `<div class="row wrap"><button class="btn sm" data-a="deAdd">${ic('plus', 14)} Eintrag hinzufügen</button><span class="muted xs">Arbeitszeit, Termin ohne Rechner, Pause …</span></div>`}</div>
+    <div class="mf"><div class="de-sum"><span>Arbeitszeit <b>${dur(sum.work)}</b></span><span>Pausen <b>${dur(sum.pause)}</b></span>${gapMin >= 1 ? `<span class="warn">Lücken <b>${dur(gapMin)}</b></span>` : ''}</div>
+      <div class="row"><button class="btn" data-a="modalClose">Abbrechen</button><button class="btn primary" id="de-save" data-a="dayEditSave" ${dirty ? '' : 'disabled'}>Speichern</button></div></div></div></div>`;
 }
 function vDay() {
   const date = S.dayDate, s = dayStat(date), info = s.info, isToday = date === TODAY, liveDay = isToday && !dayClosed();

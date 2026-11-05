@@ -28,7 +28,28 @@ async function loadAdminTab() {
   if (S.adminTab === 'mail') { S.smtp = await api('GET', '/admin/smtp'); }
   if (S.adminTab === 'sess') S.sessAdmin = await api('GET', '/admin/sessions');
 }
-function renderModalOnly() { $('#modal').innerHTML = renderModal(); }
+/* Wird dasselbe Fenster neu gezeichnet (nach einer Eingabe), bleiben Fokus und Scrollstand, und es blendet nicht erneut ein */
+let lastModal = null;
+function renderModalOnly() {
+  const host = $('#modal'), m = S.modal, again = !!m && m === lastModal;
+  let keep = null;
+  if (again) {
+    const a = document.activeElement;
+    keep = { scroll: [...host.querySelectorAll('.modal, .modal .mb')].map(e => e.scrollTop) };
+    if (a && a !== document.body && host.contains(a)) {
+      const d = a.dataset || {};
+      keep.sel = a.id ? '#' + a.id : d.da ? `[data-da="${d.da}"]` : d.de ? `[data-de="${d.de}"][data-b="${d.b}"]` : d.in ? `[data-in="${d.in}"]` : null;
+      keep.range = a.selectionStart != null ? [a.selectionStart, a.selectionEnd] : null;
+    }
+  }
+  host.innerHTML = renderModal();
+  lastModal = m;
+  if (!keep) return;
+  host.querySelectorAll('.ov, .modal').forEach(e => { e.style.animation = 'none'; });
+  host.querySelectorAll('.modal, .modal .mb').forEach((e, i) => { if (keep.scroll[i]) e.scrollTop = keep.scroll[i]; });
+  const el = keep.sel && host.querySelector(keep.sel);
+  if (el) { el.focus({ preventScroll: true }); try { if (keep.range) el.setSelectionRange(keep.range[0], keep.range[1]); } catch (e) { /* kein Textfeld */ } }
+}
 async function route() {
   if (S.pwGate || S.mfaGate) { S.route = S.pwGate ? 'pwgate' : 'mfagate'; render(); return; }
   let r = (location.hash.replace(/^#\/?/, '') || 'dashboard').split('?')[0];
@@ -427,23 +448,51 @@ const H = {
   copyCode() { navigator.clipboard.writeText(S.pairCode.code).then(() => toast('Code kopiert'), () => toast('Kopieren nicht möglich – bitte markieren', true)); },
   async devAuto(el) { const d = S.devices.find(x => x.id === el.dataset.id); await api('PATCH', '/devices/' + d.id, { autoTrack: !d.autoTrack }); toast(d.autoTrack ? 'Automatischer Start für „' + d.name + '“ aus' : 'Automatischer Start für „' + d.name + '“ an'); await sync(); },
   devRevoke(el) { const d = S.devices.find(x => x.id === el.dataset.id); confirmBox('Kopplung aufheben?', `„${d.name}“ kann danach keine Zeiten mehr melden und muss neu gekoppelt werden.`, 'Aufheben', async () => { await api('DELETE', '/devices/' + d.id); toast('Kopplung aufgehoben'); await sync(); }); },
-  /* Zeiten nachträglich bearbeiten */
+  /* Zeiten nachträglich bearbeiten (Rechenkern: dayedit.js) */
   dayEdit() {
-    const date = S.dayDate, today = date === TODAY, segs = today ? S.day.segs : (dayStat(date).segs || []);
-    S.modal = { type: 'dayedit', date, rows: segs.filter(g => g.kind !== 'off').map(g => ({ from: g.from, to: g.to, kind: g.kind, app: g.kind === 'app' ? appName(g.app) : '', note: g.note || '', open: g.to == null })) };
+    const date = S.dayDate, today = date === TODAY, raw = today ? S.day.segs : (dayStat(date).segs || []);
+    const open = today ? raw.find(g => g.to == null) : null;
+    S.modal = { type: 'dayedit', date, segs: DayEdit.init(raw.filter(g => g.to != null)), open: open ? open.from : null, maxTo: today ? (open ? open.from : Math.floor(S.now)) : 1440, flash: null, focus: null };
+    S.modal.orig = JSON.stringify(DayEdit.out(S.modal.segs));
     renderModalOnly();
   },
-  dayEditAdd() {
-    const rows = S.modal.rows, last = rows.filter(r => !r.open).reduce((m, r) => Math.max(m, r.to), 0), from = Math.min(last || 9 * 60, 1380);
-    rows.push({ from, to: Math.min(from + 60, 1440), kind: 'app', app: 'Manuell', note: '' }); renderModalOnly();
+  deAdd() {
+    const m = S.modal, d = daDefaults(m, 'app');
+    if (!d) return toast('Für diesen Tag ist keine Zeit mehr frei.', true);
+    m.add = { kind: 'app', ...d, app: '', note: '', touched: false };
+    deRender(); const el = $('#modal [data-da="from"]'); if (el) { el.focus(); el.select(); el.scrollIntoView({ block: 'nearest' }); }
   },
-  dayEditDel(el) { S.modal.rows.splice(+el.dataset.i, 1); renderModalOnly(); },
+  /** Nachbuchung für eine Lücke: das Formular mit den Zeiten der Lücke, Bezeichnung und Notiz sind noch zu füllen */
+  deBook(el) {
+    const m = S.modal; m.add = { kind: 'app', from: +el.dataset.from, to: +el.dataset.to, app: '', note: '', touched: true };
+    deRender(); const f = $('#modal [data-da="app"]'); if (f) { f.focus(); f.scrollIntoView({ block: 'nearest' }); }
+  },
+  daClose() { S.modal.add = null; S.modal.tp = null; deRender(); },
+  /** Uhrzeit-Auswahl (24 Stunden, deutsches Format, kein natives Zeitfeld) für Von/Bis im Formular „Neuer Eintrag“ */
+  daPick(el) { const m = S.modal; m.tp = m.tp === el.dataset.f ? null : el.dataset.f; deRender(); },
+  daTime(el) {
+    const m = S.modal, a = m.add, f = m.tp, v = +el.dataset.v, h = Math.floor(a[f] / 60), mi = Math.round(a[f] % 60);
+    a[f] = el.dataset.p === 'h' ? Math.min(v * 60 + mi, 1440) : Math.min(h * 60 + v, 1440);
+    a.touched = true;
+    if (el.dataset.p === 'm') m.tp = null; // mit der Minute ist die Zeit gewählt
+    deRender();
+  },
+  daKind(el) {
+    const m = S.modal, a = m.add, kind = el.dataset.v; if (a.kind === kind) return;
+    a.kind = kind;
+    if (!a.touched) { const d = daDefaults(m, kind); if (d) Object.assign(a, d); }
+    deRender();
+  },
+  daSubmit() {
+    const m = S.modal, a = m.add; if (daInfo(m).err) return;
+    m.add = null; m.tp = null;
+    deInsert({ from: a.from, to: a.to, kind: a.kind, app: deKey(a.app.trim()), note: a.note.trim() }, 'from');
+  },
+  deFill(el) { deInsert({ from: +el.dataset.from, to: +el.dataset.to, kind: 'app', app: DayEdit.MANUAL, note: '' }, 'app'); },
+  deDel(el) { S.modal.segs = DayEdit.remove(S.modal.segs, +el.dataset.b); deRender(); },
   async dayEditSave() {
     const m = S.modal;
-    // Namen der Apps zurück auf die gemeldeten Schlüssel abbilden (Anzeigename „VS Code“ → Schlüssel „code“)
-    const key = n => { const k = Object.keys(APPS).find(k => APPS[k].n === n); return k || n || 'Manuell'; };
-    const segs = m.rows.filter(r => !r.open).map(r => ({ from: r.from, to: r.to, kind: r.kind, app: r.kind === 'app' ? key(String(r.app || '').trim()) : null, note: r.kind === 'app' ? (r.note || null) : null }));
-    const r = await api('PUT', '/days/' + m.date, { segs });
+    const r = await api('PUT', '/days/' + m.date, { segs: DayEdit.out(m.segs) });
     closeModal(); toast(`Gespeichert · Arbeitszeit ${dur(r.before)} → ${dur(r.after)}`); await sync();
   },
   switchesTog() { S.showSwitches = !S.showSwitches; localStorage.setItem('tickly.switches', S.showSwitches ? '1' : '0'); render(); },
@@ -566,6 +615,83 @@ document.addEventListener('keydown', e => {
     else if (t === 'totp-code') (document.querySelector('[data-a="totpEnable"],[data-a="totpDo"]') || {}).click?.();
   }
 });
+
+/** Vorschlag für Zeiten eines neuen Eintrags: Arbeitszeit eine Stunde nach dem letzten Eintrag (Lücken werden nicht gesucht), Pause um 12 Uhr bzw. mitten in die Arbeit. */
+function daDefaults(m, kind) {
+  const rows = DayEdit.blocks(m.segs), end = rows.reduce((x, r) => Math.max(x, r.to), 0), limit = Math.min(m.maxTo, 1440), len = kind === 'locked' ? 30 : 60;
+  if (kind === 'locked') { const sp = DayEdit.suggestPause(rows); if (sp) return sp; }
+  const from = rows.length ? end : (kind === 'locked' ? 12 : 9) * 60;
+  if (limit - from >= 1) return { from, to: Math.min(from + len, limit) };
+  // Hinter dem letzten Eintrag ist nichts mehr frei (z. B. heute bis jetzt): die letzte Stunde vorschlagen, die Vorschau zeigt, was dabei ersetzt wird
+  return limit >= 1 ? { from: Math.max(0, limit - len), to: limit } : null;
+}
+function daChange(el) {
+  const m = deOpen(); if (!m || !m.add) return;
+  const a = m.add, f = el.dataset.da;
+  if (f === 'from' || f === 'to') {
+    const v = parseTime(el.value);
+    if (v == null) { toast('Bitte eine Uhrzeit im Format HH:MM eingeben', true); el.value = hm(a[f]); return; }
+    a[f] = v; a.touched = true; el.value = hm(v);
+    const info = daInfo(m), hint = $('#da-hint'), ok = $('#da-ok'), du = $('#da-dur');
+    if (hint) { hint.innerHTML = info.html; hint.classList.toggle('bad', !!info.err); }
+    if (ok) ok.disabled = !!info.err;
+    if (du) du.textContent = a.to > a.from ? dur(a.to - a.from) : '';
+  } else if (f === 'app' || f === 'note') a[f] = el.value;
+}
+/* Zeiten bearbeiten: Eingaben im Fenster (kein data-in; das Fenster wird nur neu gezeichnet, wenn sich Einträge ändern) */
+let dePend = false, pointerDown = false;
+document.addEventListener('pointerdown', () => { pointerDown = true; }, true);
+// Ein Klick auf „Löschen“ oder „Speichern“ darf nicht verloren gehen, weil die Eingabe davor das Fenster neu zeichnet: danach zeichnen
+document.addEventListener('pointerup', () => setTimeout(() => { pointerDown = false; if (dePend) { dePend = false; deRender(); } }, 0), true);
+const deOpen = () => S.modal && S.modal.type === 'dayedit' ? S.modal : null;
+function deRender() {
+  const m = deOpen(); if (!m) return;
+  renderModalOnly();
+  const f = m.focus; m.focus = null; m.flash = null;
+  const el = f && $(`#modal [data-de="${f.f}"][data-b="${f.b}"]`);
+  if (el) { el.focus(); if (el.select) el.select(); el.scrollIntoView({ block: 'nearest' }); }
+}
+function deRefresh() { if (pointerDown) dePend = true; else setTimeout(deRender, 0); }
+const deKey = n => { const k = Object.keys(APPS).find(k => APPS[k].n === n); return k || n || DayEdit.MANUAL; };
+const deOverlap = (segs, from, to, except) => segs.reduce((a, s) => s.b === except ? a : a + Math.max(0, Math.min(s.to, to) - Math.max(s.from, from)), 0);
+/** Prüft Beginn und Ende; liefert den Fehlertext oder null. */
+function deLimit(m, from, to) {
+  if (!(to > from)) return `„Bis“ (${hm(to)}) muss nach „Von“ (${hm(from)}) liegen`;
+  if (from < 0 || to > 1440) return 'Uhrzeiten müssen zwischen 00:00 und 24:00 liegen';
+  if (to > m.maxTo + .5) return m.open != null ? `Der laufende Abschnitt beginnt um ${hm(m.open)} – davor muss alles enden` : `${hm(to)} liegt in der Zukunft – heute lässt sich nur bis jetzt (${hm(S.now)}) eintragen`;
+  return null;
+}
+function deInsert(e, focus) {
+  const m = deOpen(), bad = deLimit(m, e.from, e.to); if (bad) return toast(bad, true);
+  const over = deOverlap(m.segs, e.from, e.to, -1), r = DayEdit.add(m.segs, e);
+  m.segs = r.segs; m.flash = r.b; m.focus = { b: r.b, f: focus };
+  if (over >= 1) toast(`${e.kind === 'locked' ? 'Pause' : 'Eintrag'} eingefügt · ersetzt ${dur(over)} bestehender Zeit`);
+  deRender();
+}
+function deChange(el) {
+  const m = deOpen(); if (!m) return;
+  const b = +el.dataset.b, f = el.dataset.de, row = DayEdit.blocks(m.segs).find(r => r.b === b); if (!row) return;
+  if (f === 'from' || f === 'to') {
+    const v = parseTime(el.value);
+    if (v == null) { toast('Bitte eine Uhrzeit im Format HH:MM eingeben', true); return deRefresh(); }
+    if (Math.abs(v - row[f]) < .5) { el.value = hm(row[f]); return; }
+    const from = f === 'from' ? v : row.from, to = f === 'to' ? v : row.to, bad = deLimit(m, from, to);
+    if (bad) { toast(bad, true); return deRefresh(); }
+    const over = deOverlap(m.segs, from, to, b) - deOverlap(m.segs, row.from, row.to, b);
+    m.segs = DayEdit.setRange(m.segs, b, from, to);
+    if (over >= 1) toast(`Ersetzt ${dur(over)} bestehender Zeit`);
+  } else if (f === 'kind') m.segs = DayEdit.setAttrs(m.segs, b, { kind: el.value });
+  else return;
+  deRefresh();
+}
+function deInput(el) {
+  const m = deOpen(); if (!m) return;
+  const b = +el.dataset.b;
+  m.segs = DayEdit.setAttrs(m.segs, b, el.dataset.de === 'app' ? { app: deKey(el.value.trim()) } : { note: el.value.trim() });
+  const save = $('#de-save'); if (save) save.disabled = JSON.stringify(DayEdit.out(m.segs)) === m.orig;
+}
+document.addEventListener('change', e => { const el = e.target; if (el && el.dataset && el.dataset.de) deChange(el); else if (el && el.dataset && el.dataset.da) daChange(el); });
+document.addEventListener('input', e => { const el = e.target; if (!el || !el.dataset) return; if (el.dataset.de === 'app' || el.dataset.de === 'note') deInput(el); else if (el.dataset.da === 'app' || el.dataset.da === 'note') daChange(el); });
 
 /* generische Eingabe-Bindung */
 function onInput(e, live) {

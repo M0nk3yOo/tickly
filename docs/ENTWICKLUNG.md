@@ -20,6 +20,7 @@ TICKLY_DEMO=0 scripts/dev.sh                                 # Echtbetrieb ohne 
 
 ```sh
 cargo test --workspace             # 70+ Tests: Logik, Companion-Kern, API gegen echtes PostgreSQL
+node scripts/test-dayedit.mjs      # Rechenkern von „Zeiten bearbeiten“ (web/dayedit.js)
 ```
 
 Die API-Tests brauchen eine PostgreSQL-Instanz (`TEST_DATABASE_URL`, Standard `postgres://tickly@localhost:5433/postgres`, von `scripts/dev.sh` bereitgestellt). Jeder Test arbeitet in einer aus einer Vorlage kopierten eigenen Datenbank. Sie decken u. a. ab: Rechenlogik, Passkey-Zeremonie mit Software-Token, TOTP, MFA-Pflicht, IP-Sperren, Sitzungen, Sicherung/Wiederherstellung (auch verschlüsselt, auch alte Dateien), Mails über einen Test-SMTP-Server, Offline-Betrieb des Companion gegen den echten Server.
