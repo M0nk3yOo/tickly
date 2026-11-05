@@ -82,6 +82,8 @@ const appGlyph = (k, size = 14) => `<svg class="ag" width="${size}" height="${si
 const appIcon = (k, size = 20) => `<span class="aic" style="width:${size}px;height:${size}px;background:var(${appOf(k).c})">${appGlyph(k, Math.round(size * .66))}</span>`;
 
 let LINES = [];
+/** „07:58–16:40 Uhr · “ für den Tooltip eines Tages (leer, wenn nichts erfasst ist) */
+const span = s => s.has && s.start != null ? (s.live || s.end == null ? `ab ${hm(s.start)} Uhr (läuft) · ` : `${hm(s.start)}–${hm(s.end)} Uhr · `) : '';
 const tipAttr = (title, sub) => `data-tip="${esc(title)}${sub ? '|' + esc(sub) : ''}"`;
 
 /* ---------- Diagramm-Bausteine ---------- */
@@ -411,7 +413,7 @@ function vDashboard() {
   while (d <= TODAY) {
     if (dow(d) < 5) {
       const s = dayStat(d), k = s.info.kind;
-      const tip = s.info.off && k !== 'comp' ? [KINDS[k].n + (s.info.holiday ? ': ' + s.info.holiday : ''), `${dLong(d)} · Soll entfällt – kein Minus`] : [dur(s.counted), `${dLong(d)} · Soll ${dur(s.soll)} · ${sdur(s.diffLive)}`];
+      const tip = s.info.off && k !== 'comp' ? [KINDS[k].n + (s.info.holiday ? ': ' + s.info.holiday : ''), `${dLong(d)} · Soll entfällt – kein Minus`] : [dur(s.counted), `${dLong(d)} · ${span(s)}Soll ${dur(s.soll)} · ${sdur(s.diffLive)}`];
       items.push({ lab: DOW_S[dow(d)] + ' ' + parseD(d).getDate() + '.', ist: s.counted, soll: s.soll, off: k && k !== 'comp' && !s.has ? k : null, kind: k, today: d === TODAY, tip });
     }
     d = addDays(d, 1);
@@ -621,7 +623,7 @@ function vStats() {
       else if (offKind && offKind !== 'comp') tip = [KINDS[offKind].n + (s.info.holiday ? ': ' + s.info.holiday : ''), `${dLong(d)} · Soll entfällt`];
       else if (offKind === 'comp') tip = ['Zeitausgleich', `${dLong(d)} · ${sdur(-s.soll)} Überstundenabbau`];
       else if (!s.has && s.info.weekend) tip = ['Wochenende', dLong(d)];
-      else tip = [dur(s.counted), `${dLong(d)} · Soll ${dur(s.soll)} · ${sdur(s.diffLive)}`];
+      else tip = [dur(s.counted), `${dLong(d)} · ${span(s)}Soll ${dur(s.soll)} · ${sdur(s.diffLive)}`];
       if (!(mode === 'month' && s.info.weekend && !s.has && d <= TODAY) || true) items.push({ lab: mode === 'week' ? DOW_S[dow(d)] + ' ' + parseD(d).getDate() + '.' : String(parseD(d).getDate()), ist: s.counted, soll: s.soll, off: offKind && offKind !== 'comp' ? offKind : null, kind: k, today: d === TODAY, wk: s.info.weekend, tip });
       d = addDays(d, 1);
     }

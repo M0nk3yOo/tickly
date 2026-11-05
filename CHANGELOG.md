@@ -1,5 +1,11 @@
 # Änderungen
 
+## 0.9.16
+
+Aktualisierung von 0.9.15: Es ändert sich nur der Server mit der Weboberfläche (keine Datenbankänderung); der Companion braucht kein Update.
+
+- **Beginn und Ende im Tooltip.** Fährst du im Dashboard oder in der Auswertung über einen Tagesbalken, zeigt der Tooltip jetzt auch die Uhrzeiten, z. B. „07:27–15:59 Uhr“, beim laufenden Tag „ab 07:52 Uhr (läuft)“.
+
 ## 0.9.15
 
 Aktualisierung von 0.9.14: Es ändert sich nur der Server mit der Weboberfläche (keine Datenbankänderung); der Companion braucht kein Update und läuft in 0.9.14 weiter.
