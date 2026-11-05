@@ -12,6 +12,14 @@ use tickly_core::{day_stat, night_check};
 
 pub fn spawn_watch(app: Arc<App>) {
     if app.cfg.demo { return }
+    // Vorab festgelegte Enden: alle 10 Sekunden prüfen (das Ende selbst wird auf die Minute genau gesetzt, auch wenn es später bemerkt wird)
+    let a = app.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            if let Err(e) = apply_planned_ends(&a).await { tracing::warn!("Vorab festgelegte Enden: {e}"); }
+        }
+    });
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(60)).await;
@@ -19,6 +27,27 @@ pub fn spawn_watch(app: Arc<App>) {
             if let Err(e) = tick_at(&app, today, now).await { tracing::warn!("Prüfung des Trackings fehlgeschlagen: {e}"); }
         }
     });
+}
+
+/// Beendet jedes Tracking von heute, dessen vorab festgelegtes Ende erreicht ist. Gibt die Zahl der beendeten Tage zurück.
+pub async fn apply_planned_ends(app: &Arc<App>) -> Result<usize, String> {
+    let e = |x: sqlx::Error| x.to_string();
+    let (today, now) = app.clock(None);
+    let users: Vec<String> = sqlx::query_scalar("SELECT user_id FROM days WHERE day = $1 AND state->>'plannedEnd' IS NOT NULL AND (state->>'plannedEnd')::float8 <= $2")
+        .bind(today).bind(now).fetch_all(&app.pool).await.map_err(e)?;
+    let mut n = 0;
+    for uid in users {
+        let mut tx = app.pool.begin().await.map_err(e)?;
+        db::lock_user(&mut tx, &uid).await.map_err(|x| x.1)?;
+        if let Some(mut d) = db::get_day(&mut tx, &uid, today).await.map_err(|x| x.1)? {
+            if d.apply_planned_end(now) {
+                db::put_day(&mut tx, &uid, today, &d).await.map_err(|x| x.1)?;
+                n += 1;
+            }
+        }
+        tx.commit().await.map_err(e)?;
+    }
+    Ok(n)
 }
 
 fn hh(m: f64) -> String {

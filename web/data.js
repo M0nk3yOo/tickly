@@ -84,7 +84,7 @@ const S = {
   // Serverdaten (aus dem Snapshot)
   me: { id: '', name: '', email: '', role: 'user' },
   set: { hours: [8, 8, 8, 8, 8, 0, 0], mode: 'net', rules: [], lockAsBreak: true, chunk: 15, state: 'NW', startBal: 0, idle: 10, trackApps: true, trackTitles: false, trackLock: true, autostart: true, excluded: [], pwLogin: true, theme: 'system', autoTrack: { enabled: true, ask: true, windows: [] }, extraDays: { rosenmontag: false, heiligabend: false, silvester: false, custom: [] } },
-  reg: { open: true, approval: true, domains: '', weekly: 40, passkeyPrompt: true, minPw: 14, mfaRequired: false, mfaGraceDays: 7, sessionDays: 30, editDaysBack: 90, verifyEmail: false },
+  reg: { open: true, approval: true, domains: '', weekly: 40, passkeyPrompt: true, minPw: 14, mfaRequired: false, mfaGraceDays: 7, sessionDays: 30, editDaysBack: 90, verifyEmail: false, allowStartChange: true, allowPlannedEnd: true },
   passkeys: [], absences: [], users: [], day: { start: 0, tracking: false, ended: null, lastApp: 'mail', segs: [], events: [] }
 };
 const DB = { days: {}, forecastEnd: null, vacation: { total: 30, taken: 0, planned: 0, rest: 30 }, nextHolidays: [], holidays: [] };

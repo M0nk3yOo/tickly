@@ -231,6 +231,149 @@ fn ending_the_tracking_in_the_companion_closes_the_day_and_start_continues_it() 
 }
 
 #[test]
+fn the_start_of_a_running_tracking_can_be_moved_and_counts_immediately() {
+    let secs = |d: &DayState| d.segs.iter().map(|g| (g.from, g.to, g.kind)).collect::<Vec<_>>();
+    let counted = |d: &DayState, now: f64| calc_segs(&resolve(&d.segs, now), &Settings::default()).gross;
+
+    // Rechnerstart 08:00, Programmwechsel und eine Sperre gehören alle zum Lauf
+    let mut day = DayState::boot(480.0, "Windows");
+    day.switch_app("code", 540.0).unwrap();
+    day.lock(600.0).unwrap();
+    day.unlock(610.0).unwrap();
+    assert_eq!(day.run_start(), Some(480.0));
+    assert_eq!(counted(&day, 700.0), 220.0);
+
+    // Früher: 07:30 – die halbe Stunde zählt sofort mit, die Programme bleiben
+    let old = day.set_run_start(700.0, 450.0).unwrap();
+    assert_eq!(old, 480.0);
+    assert_eq!(day.run_start(), Some(450.0));
+    assert_eq!(day.start, 450.0);
+    assert_eq!(counted(&day, 700.0), 250.0);
+    assert_eq!(day.segs.len(), 4, "keine zusätzlichen Abschnitte");
+    assert!(day.events.iter().any(|e| e.k == "start" || e.k == "boot") && day.events.iter().filter(|e| e.k == "boot" || e.k == "start").all(|e| e.t == 450.0 || e.t > 450.0));
+    assert!(day.events.last().unwrap().txt.contains("von 08:00 auf 07:30"), "{:?}", day.events.last());
+
+    // Später: 09:30 – erster Abschnitt (08:00–09:00) entfällt, der zweite beginnt später
+    day.set_run_start(700.0, 570.0).unwrap();
+    assert_eq!(secs(&day)[0], (570.0, Some(600.0), SegKind::App));
+    assert_eq!(day.run_start(), Some(570.0));
+    assert_eq!(counted(&day, 700.0), 130.0);
+
+    // Nicht in der Zukunft, nicht ohne laufendes Tracking
+    assert!(day.set_run_start(700.0, 701.0).is_err());
+    let mut paused = DayState::boot(480.0, "Windows");
+    paused.pause(540.0).unwrap();
+    assert!(paused.set_run_start(600.0, 500.0).is_err());
+    assert_eq!(paused.run_start(), None);
+
+    // Nach einer Pause beginnt ein neuer Lauf; davor liegende Arbeitszeit darf nicht überdeckt werden
+    let mut day = DayState::boot(480.0, "Windows");
+    day.pause(540.0).unwrap();
+    day.start_tracking(600.0).unwrap();
+    assert_eq!(day.run_start(), Some(600.0));
+    let e = day.set_run_start(660.0, 500.0).unwrap_err();
+    assert!(e.contains("09:00") || e.contains("9:00"), "{e}");
+    day.set_run_start(660.0, 560.0).unwrap();
+    assert_eq!(day.run_start(), Some(560.0));
+    assert_eq!(secs(&day)[0], (480.0, Some(540.0), SegKind::App), "der erste Lauf bleibt");
+    // Der Tagesbeginn bleibt, weil nicht der erste Lauf geändert wurde
+    assert_eq!(day.start, 480.0);
+
+    // Ein Loch („Companion nicht aktiv“) vor dem Lauf darf überdeckt werden
+    let mut day = DayState::boot(480.0, "Windows");
+    day.shutdown(540.0).unwrap();
+    day.on_boot(600.0, "Windows", &pol(None, false));
+    assert_eq!(day.run_start(), Some(600.0));
+    day.set_run_start(620.0, 560.0).unwrap();
+    assert_eq!(day.run_start(), Some(560.0));
+    assert!(day.segs.iter().filter(|g| g.kind == SegKind::Off).all(|g| g.to.unwrap() <= 560.0 + 1e-6), "{:?}", day.segs);
+
+    // Derselbe Wert ändert nichts und schreibt kein Ereignis
+    let n = day.events.len();
+    day.set_run_start(620.0, 560.0).unwrap();
+    assert_eq!(day.events.len(), n);
+}
+
+#[test]
+fn a_planned_end_stops_the_tracking_exactly_then_even_when_noticed_later() {
+    let gross = |d: &DayState, now: f64| calc_segs(&resolve(&d.segs, now), &Settings::default()).gross;
+
+    let mut day = DayState::boot(480.0, "Windows");
+    day.switch_app("code", 540.0).unwrap();
+    // Nur in der Zukunft, nur bei laufendem Tracking
+    assert!(day.set_planned_end(600.0, 600.0).is_err() && day.set_planned_end(600.0, 500.0).is_err());
+    assert!(day.set_planned_end(600.0, 2000.0).is_err());
+    day.set_planned_end(600.0, 1020.0).unwrap();
+    assert_eq!(day.planned_end, Some(1020.0));
+    assert!(!day.apply_planned_end(1019.0) && day.tracking, "vorher nichts");
+    // Ein neuer Wert ersetzt den alten
+    day.set_planned_end(700.0, 960.0).unwrap();
+    assert_eq!(day.planned_end, Some(960.0));
+
+    // Bemerkt wird es erst um 16:30 – gezählt wird bis 16:00 (960)
+    assert!(day.apply_planned_end(990.0));
+    assert!(!day.tracking && day.planned_end.is_none());
+    assert_eq!(day.ended, Some(960.0));
+    assert_eq!(gross(&day, 990.0), 480.0);
+    assert!(day.events.last().unwrap().txt.contains("vorab festgelegten Ende") && day.events.last().unwrap().t == 960.0, "{:?}", day.events.last());
+    assert!(!day.apply_planned_end(1000.0), "nur einmal");
+
+    // Aufheben: das Tracking läuft weiter
+    let mut day = DayState::boot(480.0, "Windows");
+    day.set_planned_end(600.0, 900.0).unwrap();
+    day.clear_planned_end(610.0).unwrap();
+    assert!(day.clear_planned_end(610.0).is_err());
+    assert!(!day.apply_planned_end(1000.0) && day.tracking);
+
+    // Beenden von Hand räumt das geplante Ende auf; ein späterer Start wird nicht gleich wieder beendet
+    let mut day = DayState::boot(480.0, "Windows");
+    day.set_planned_end(600.0, 900.0).unwrap();
+    day.end_tracking(700.0).unwrap();
+    assert!(day.planned_end.is_none());
+    day.start_tracking(950.0).unwrap();
+    assert!(!day.apply_planned_end(960.0) && day.tracking);
+
+    // Pausiert: das Ende ist der Beginn der Pause
+    let mut day = DayState::boot(480.0, "Windows");
+    day.set_planned_end(600.0, 900.0).unwrap();
+    day.pause(700.0).unwrap();
+    assert!(day.apply_planned_end(910.0));
+    assert_eq!(day.ended, Some(700.0));
+    assert_eq!(day.track(), crate::Track::Stopped);
+}
+
+#[test]
+fn a_planned_end_does_not_stop_a_tracking_that_resumes_after_the_computer_was_shut_down() {
+    // Ende für 17:00 festgelegt, der Rechner fährt um 16:00 herunter und startet um 18:00 wieder
+    let mut day = DayState::boot(480.0, "Windows");
+    day.set_planned_end(600.0, 1020.0).unwrap();
+    day.shutdown(960.0).unwrap();
+    assert_eq!(day.planned_end, Some(1020.0), "bis dahin bleibt es vorgemerkt");
+    // Um 17:00 ist nichts mehr zu beenden: das Ende entfällt, der Tag bleibt „heruntergefahren“
+    assert!(day.apply_planned_end(1021.0));
+    assert!(day.planned_end.is_none() && !day.tracking && day.stop == Some(Stop::Shutdown) && day.ended == Some(960.0));
+    assert!(day.events.last().unwrap().txt.contains("entfällt"), "{:?}", day.events.last());
+    // Beim Start um 18:00 läuft das Tracking weiter und wird nicht rückwirkend beendet
+    day.on_boot(1080.0, "Windows", &pol(None, false));
+    assert!(day.tracking && day.planned_end.is_none());
+    assert!(!day.apply_planned_end(1090.0) && day.tracking);
+
+    // Auch ohne dass es vorher bemerkt wurde (der Server war aus): der Start hebt das veraltete Ende auf, bevor er es anwendet
+    let mut day = DayState::boot(480.0, "Windows");
+    day.set_planned_end(600.0, 1020.0).unwrap();
+    day.shutdown(960.0).unwrap();
+    assert!(day.apply_planned_end(1080.0));
+    day.on_boot(1080.0, "Windows", &pol(None, false));
+    assert!(day.tracking);
+
+    // Wird der Companion richtig beendet (nicht nur heruntergefahren), entfällt das Ende ohnehin
+    let mut day = DayState::boot(480.0, "Windows");
+    day.set_planned_end(600.0, 1020.0).unwrap();
+    day.quit(960.0).unwrap();
+    assert!(day.planned_end.is_none());
+}
+
+#[test]
 fn pause_stops_counting_and_resumes_without_gap_time() {
     let mut day = DayState::boot(480.0, "Windows");
     day.pause(540.0).unwrap();

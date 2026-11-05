@@ -1831,6 +1831,136 @@ async fn web_only_tracking_start_stop_and_preview() {
 }
 
 #[tokio::test]
+async fn the_start_of_a_running_tracking_can_be_changed_in_the_web() {
+    let mut c = Client::real().await;
+    assert_eq!(c.login("chef@example.de", "Sehr-Langes-Passwort-42").await, StatusCode::OK);
+    // Ohne laufendes Tracking gibt es keinen Beginn zu ändern
+    assert_eq!(c.post("/api/companion", json!({"kind": "startat", "since": 1})).await.0, StatusCode::CONFLICT);
+    assert_eq!(c.post("/api/tracking/start-preview", json!({})).await.0, StatusCode::CONFLICT);
+    assert_eq!(c.post("/api/companion", json!({"kind": "start"})).await.0, StatusCode::OK);
+    let (_, now) = c.app.clock(None);
+    let seg_from = |t: &Value| t["day"]["segs"][0]["from"].as_f64().unwrap();
+    let t = c.get("/api/today").await.1;
+    let begin = seg_from(&t);
+
+    // Vorschau ohne Wert: der bisherige Beginn; mit Wert: was sich ändert; Zukunft geht nicht
+    let (st, p) = c.post("/api/tracking/start-preview", json!({})).await;
+    assert_eq!((st, p["from"].as_f64().map(|x| (x - begin).abs() < 1e-6)), (StatusCode::OK, Some(true)), "{p}");
+    let earlier = (begin - 45.0).max(0.0);
+    let (st, p) = c.post("/api/tracking/start-preview", json!({"at": earlier})).await;
+    assert_eq!(st, StatusCode::OK, "{p}");
+    assert!(p["gross"].as_f64().unwrap() >= p["before"]["gross"].as_f64().unwrap() + (begin - earlier) - 0.5, "{p}");
+    assert_eq!(c.post("/api/tracking/start-preview", json!({"at": now + 30.0})).await.0, StatusCode::CONFLICT);
+    assert_eq!(c.get("/api/today").await.1["day"]["segs"][0]["from"].as_f64().map(|x| (x - begin).abs() < 1e-6), Some(true), "Vorschau ändert nichts");
+
+    // Ändern: ohne Angabe 400, in der Zukunft 409, sonst gilt der neue Beginn sofort
+    assert_eq!(c.post("/api/companion", json!({"kind": "startat"})).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(c.post("/api/companion", json!({"kind": "startat", "since": now + 30.0})).await.0, StatusCode::CONFLICT);
+    assert_eq!(c.post("/api/companion", json!({"kind": "startat", "since": earlier})).await.0, StatusCode::OK);
+    let t = c.get("/api/today").await.1;
+    assert!((seg_from(&t) - earlier).abs() < 1e-6, "{t}");
+    assert!(t["day"]["events"].as_array().unwrap().iter().any(|e| e["txt"].as_str().unwrap_or("").starts_with("Beginn des laufenden Trackings von")), "{t}");
+    assert!(t["today"]["gross"].as_f64().unwrap() >= (now - earlier) - 1.0, "die frühere Zeit zählt sofort mit");
+    // Wieder später (der Lauf ist der erste des Tages)
+    let later = earlier + 20.0;
+    assert_eq!(c.post("/api/companion", json!({"kind": "startat", "since": later})).await.0, StatusCode::OK);
+    assert!((seg_from(&c.get("/api/today").await.1) - later).abs() < 1e-6);
+
+    // Ein gekoppelter Companion meldet das nicht (nur die Weboberfläche)
+    let code = c.post("/api/devices/pair-code", json!({})).await.1["code"].as_str().unwrap().to_string();
+    let mut dev = c.fresh();
+    dev.cookie = None;
+    let token = dev.post("/api/device/pair", json!({"code": code, "name": "Mac", "os": "macos", "version": "1.0.0"})).await.1["token"].as_str().unwrap().to_string();
+    let at = chrono::Utc::now().to_rfc3339();
+    let (st, r) = dev.call_h(Method::POST, "/api/device/events", Some(json!({"events": [{"seq": 1, "kind": "startat", "at": at}]})), Some(&token)).await;
+    assert_eq!(st, StatusCode::OK, "{r}");
+    assert_eq!(r["results"][0]["ok"], false);
+    assert!((seg_from(&c.get("/api/today").await.1) - later).abs() < 1e-6);
+}
+
+#[tokio::test]
+async fn an_end_planned_in_advance_ends_the_tracking_by_itself_and_the_admin_can_switch_it_off() {
+    let mut c = Client::new().await;
+    c.login_andre().await;
+    // Demo-Uhr 15:00 (900): läuft seit 07:52. Ein Ende in der Vergangenheit ist keine Vorab-Festlegung
+    let now = 900;
+    assert_eq!(c.post("/api/companion", json!({"kind": "planend", "until": 800, "now": now})).await.0, StatusCode::CONFLICT);
+    assert_eq!(c.post("/api/companion", json!({"kind": "planend", "now": now})).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(c.post("/api/companion", json!({"kind": "planend", "until": 3000, "now": now})).await.0, StatusCode::CONFLICT);
+    // Vorschau für ein Ende um 17:00
+    let (st, p) = c.post("/api/tracking/stop-preview", json!({"at": 1020, "now": now})).await;
+    assert_eq!(st, StatusCode::OK, "{p}");
+    assert_eq!((p["planned"].clone(), p["at"].as_f64()), (json!(true), Some(1020.0)));
+    assert!(p["gross"].as_f64().unwrap() > 540.0, "bis 17:00 gerechnet: {p}");
+    // Festlegen: das Tracking läuft weiter, das Ende steht im Tageszustand und in den Ereignissen
+    assert_eq!(c.post("/api/companion", json!({"kind": "planend", "until": 1020, "now": now})).await.0, StatusCode::OK);
+    let t = c.get(&format!("/api/today?now={now}")).await.1;
+    assert_eq!((t["day"]["tracking"].clone(), t["day"]["plannedEnd"].as_f64()), (json!(true), Some(1020.0)), "{t}");
+    assert!(t["day"]["events"].as_array().unwrap().iter().any(|e| e["txt"].as_str().unwrap_or("").contains("Ende vorab festgelegt")));
+    // Aufheben und wieder festlegen
+    assert_eq!(c.post("/api/companion", json!({"kind": "planclear", "now": now})).await.0, StatusCode::OK);
+    assert_eq!(c.post("/api/companion", json!({"kind": "planclear", "now": now})).await.0, StatusCode::CONFLICT);
+    assert!(c.get(&format!("/api/today?now={now}")).await.1["day"]["plannedEnd"].is_null());
+    assert_eq!(c.post("/api/companion", json!({"kind": "planend", "until": 1020, "now": now})).await.0, StatusCode::OK);
+
+    // Erreicht: sofort beendet, auf die Minute genau – auch wenn es erst später bemerkt wird (hier 17:10)
+    let t = c.get("/api/today?now=1030").await.1;
+    assert_eq!((t["day"]["tracking"].clone(), t["day"]["ended"].as_f64()), (json!(false), Some(1020.0)), "{t}");
+    assert!(t["day"]["events"].as_array().unwrap().iter().any(|e| e["txt"].as_str().unwrap_or("").contains("vorab festgelegten Ende")), "{t}");
+    // … und mit dem nächsten Ereignis gespeichert
+    assert_eq!(c.post("/api/companion", json!({"kind": "tick", "now": 1031})).await.0, StatusCode::OK);
+    let t = c.get("/api/today?now=1031").await.1;
+    assert_eq!((t["day"]["tracking"].clone(), t["day"]["plannedEnd"].is_null()), (json!(false), true), "{t}");
+
+    // Der Administrator kann beides ausschalten
+    let snap = c.get("/api/snapshot").await.1;
+    assert_eq!((snap["limits"]["startChange"].clone(), snap["limits"]["plannedEnd"].clone()), (json!(true), json!(true)), "standardmäßig an");
+    let mut pol = snap["reg"].clone();
+    pol["allowStartChange"] = json!(false);
+    pol["allowPlannedEnd"] = json!(false);
+    assert_eq!(c.put("/api/admin/registration", pol.clone()).await.0, StatusCode::OK, "{pol}");
+    let snap = c.get("/api/snapshot").await.1;
+    assert_eq!((snap["limits"]["startChange"].clone(), snap["limits"]["plannedEnd"].clone()), (json!(false), json!(false)));
+    assert_eq!(c.post("/api/companion", json!({"kind": "startat", "since": 500, "now": now})).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(c.post("/api/companion", json!({"kind": "planend", "until": 1020, "now": now})).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(c.post("/api/tracking/start-preview", json!({"now": now})).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(c.post("/api/tracking/stop-preview", json!({"at": 1020, "now": now})).await.0, StatusCode::CONFLICT, "Zukunft nur mit eingeschalteter Funktion");
+}
+
+#[tokio::test]
+async fn a_planned_end_does_not_stop_the_tracking_after_the_computer_was_shut_down() {
+    let mut c = Client::new().await;
+    c.login_andre().await;
+    // Ende für 17:00 festgelegt, der Rechner fährt um 16:00 herunter, ab 18:00 läuft er wieder
+    assert_eq!(c.post("/api/companion", json!({"kind": "planend", "until": 1020, "now": 900})).await.0, StatusCode::OK);
+    assert_eq!(c.post("/api/companion", json!({"kind": "shutdown", "now": 960})).await.0, StatusCode::OK);
+    let t = c.get("/api/today?now=1030").await.1;
+    assert_eq!((t["day"]["tracking"].clone(), t["day"]["stop"].clone(), t["day"]["plannedEnd"].is_null()), (json!(false), json!("shutdown"), true), "{t}");
+    assert_eq!(c.post("/api/companion", json!({"kind": "boot", "now": 1080})).await.0, StatusCode::OK);
+    let t = c.get("/api/today?now=1085").await.1;
+    assert_eq!((t["day"]["tracking"].clone(), t["day"]["ended"].is_null(), t["day"]["plannedEnd"].is_null()), (json!(true), true, true), "{t}");
+}
+
+#[tokio::test]
+async fn a_planned_end_is_applied_by_the_background_check_in_real_operation() {
+    let mut c = Client::real().await;
+    assert_eq!(c.login("chef@example.de", "Sehr-Langes-Passwort-42").await, StatusCode::OK);
+    assert_eq!(c.post("/api/companion", json!({"kind": "start"})).await.0, StatusCode::OK);
+    let (_, now) = c.app.clock(None);
+    // Ende in ca. zwei Sekunden (Minuten seit Mitternacht), nicht über Mitternacht hinaus
+    let at = (now + 2.0 / 60.0).min(1440.0);
+    if at <= now + 1e-6 { return }
+    assert_eq!(c.post("/api/companion", json!({"kind": "planend", "until": at})).await.0, StatusCode::OK);
+    assert_eq!(tickly_api::tracking::apply_planned_ends(&c.app).await.unwrap(), 0, "noch nicht erreicht");
+    tokio::time::sleep(std::time::Duration::from_millis(2600)).await;
+    assert_eq!(tickly_api::tracking::apply_planned_ends(&c.app).await.unwrap(), 1);
+    let t = c.get("/api/today").await.1;
+    assert_eq!((t["day"]["tracking"].clone(), t["day"]["plannedEnd"].is_null()), (json!(false), true), "{t}");
+    assert!((t["day"]["ended"].as_f64().unwrap() - at).abs() < 1e-6, "{t}");
+    assert_eq!(tickly_api::tracking::apply_planned_ends(&c.app).await.unwrap(), 0);
+}
+
+#[tokio::test]
 async fn web_stop_at_manual_time_with_preview() {
     let mut c = Client::new().await;
     c.login_andre().await;
@@ -1847,7 +1977,9 @@ async fn web_stop_at_manual_time_with_preview() {
     assert!((b1 - (b0 + diff)).abs() < 1e-6, "ein offener Tag zählte bisher kein Minus: {p}");
     let later = c.post("/api/tracking/stop-preview", json!({"at": 840, "now": now})).await.1["gross"].as_f64().unwrap();
     assert!(later > p["gross"].as_f64().unwrap());
-    assert_eq!(c.post("/api/tracking/stop-preview", json!({"at": 950, "now": now})).await.0, StatusCode::CONFLICT);
+    // Ein Ende in der Zukunft ist eine Vorab-Festlegung (Vorschau erlaubt); „jetzt beenden“ mit Zukunft geht nicht
+    assert_eq!(c.post("/api/tracking/stop-preview", json!({"at": 950, "now": now})).await.1["planned"], true);
+    assert_eq!(c.post("/api/companion", json!({"kind": "stopat", "until": 950, "now": now})).await.0, StatusCode::CONFLICT);
     assert_eq!(c.post("/api/tracking/stop-preview", json!({"at": 100, "now": now})).await.0, StatusCode::CONFLICT);
     // Die Vorschau ändert nichts
     assert_eq!(c.get(&format!("/api/today?now={now}")).await.1["day"]["tracking"], true);

@@ -51,6 +51,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/absences/{id}", put(abs_update).delete(abs_delete))
         .route("/companion", post(companion))
         .route("/tracking/stop-preview", post(stop_preview))
+        .route("/tracking/start-preview", post(start_preview))
         .route("/tracking/night/confirm", post(night_confirm))
         .route("/tracking/device/ack", post(clash_ack))
         .route("/tracking/night/stop", post(night_stop))
@@ -495,7 +496,7 @@ async fn snapshot_json(app: &App, u: &UserRow, today: NaiveDate, now: f64) -> Re
     v["devices"] = Value::Array(device::list_for(app, &u.id).await?);
     let reg = db::reg_policy(&app.pool).await?;
     v["mfa"] = db::mfa_status(&app.pool, u, &reg).await?.json();
-    v["limits"] = json!({ "editDaysBack": reg.edit_days_back, "longTrackHours": reg.long_track_hours });
+    v["limits"] = json!({ "editDaysBack": reg.edit_days_back, "longTrackHours": reg.long_track_hours, "startChange": reg.allow_start_change, "plannedEnd": reg.allow_planned_end });
     v["secQ"] = crate::secq::status(app, u).await?;
     v["startBalSet"] = json!(u.start_bal_set);
     v["serverVersion"] = json!(env!("CARGO_PKG_VERSION"));
@@ -627,11 +628,17 @@ async fn abs_delete(State(app): St, h: HeaderMap, Path(id): Path<i64>) -> Res<Js
 
 /* ---------- Companion über die Web-Oberfläche ---------- */
 /// Im Echtbetrieb steuert die Weboberfläche nur das Tracking; Systemereignisse kommen vom gekoppelten Gerät.
-const WEB_KINDS: [&str; 6] = ["pause", "start", "answer", "tick", "stop", "stopat"];
+const WEB_KINDS: [&str; 9] = ["pause", "start", "answer", "tick", "stop", "stopat", "startat", "planend", "planclear"];
 
-async fn companion(State(app): St, h: HeaderMap, Json(ev): Json<Ev>) -> Res<Json<Value>> {
+async fn companion(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientIp>, Json(ev): Json<Ev>) -> Res<Json<Value>> {
     let u = auth(&app, &h, false).await?;
     if !app.cfg.demo && !WEB_KINDS.contains(&ev.kind.as_str()) { return forbidden("Dieses Ereignis meldet der Companion auf dem Rechner") }
+    // Was der Administrator ausgeschaltet hat
+    if ev.kind == "startat" || ev.kind == "planend" {
+        let reg = db::reg_policy(&app.pool).await?;
+        if ev.kind == "startat" && !reg.allow_start_change { return forbidden("Das Ändern des Beginns ist vom Administrator ausgeschaltet") }
+        if ev.kind == "planend" && !reg.allow_planned_end { return forbidden("Ein Ende vorab festzulegen ist vom Administrator ausgeschaltet") }
+    }
     let abs = db::absences(&app.pool, &u.id).await?;
     let mut ev = ev;
     ev.at = None;
@@ -640,7 +647,19 @@ async fn companion(State(app): St, h: HeaderMap, Json(ev): Json<Ev>) -> Res<Json
     let res = events::apply(&app, &mut tx, &u, &abs, &ev).await?;
     if let Err(m) = res { return conflict(m) }
     tx.commit().await?;
+    if ev.kind == "planend" || ev.kind == "planclear" {
+        let txt = if ev.kind == "planend" { format!("Ende vorab auf {} gesetzt", hm_clock(ev.until.unwrap_or(0.0))) } else { "Vorab festgelegtes Ende aufgehoben".to_string() };
+        netsec::log(&app, "edit", true, ip, &h, Some(&u.id), Some(&u.email), &txt).await;
+    }
+    if ev.kind == "startat" {
+        netsec::log(&app, "edit", true, ip, &h, Some(&u.id), Some(&u.email), &format!("Beginn des laufenden Trackings auf {} gesetzt", hm_clock(ev.since.unwrap_or(0.0)))).await;
+    }
     Ok(Json(json!({ "ok": true })))
+}
+
+fn hm_clock(m: f64) -> String {
+    let t = m.round() as i64;
+    format!("{:02}:{:02}", t.div_euclid(60), t.rem_euclid(60))
 }
 
 #[derive(Deserialize)]
@@ -650,15 +669,37 @@ struct PreviewReq { at: Option<f64>, now: Option<f64> }
 async fn stop_preview(State(app): St, h: HeaderMap, Json(r): Json<PreviewReq>) -> Res<Json<Value>> {
     let u = auth(&app, &h, false).await?;
     let (today, now) = app.clock(r.now);
-    let mut c = db::Calc::load(&app, &u, today, now).await?;
-    if !c.has_day { return conflict("Heute läuft kein Tracking.") }
     let at = r.at.unwrap_or(now);
+    // Liegt das Ende in der Zukunft, wird es vorab festgelegt: die Vorschau rechnet den Tag so, als wäre es dann erreicht
+    let planned = at > now + 1e-6;
+    if planned && !db::reg_policy(&app.pool).await?.allow_planned_end { return conflict("Ein Ende vorab festzulegen ist vom Administrator ausgeschaltet. Das Ende darf nicht in der Zukunft liegen.") }
+    let mut c = db::Calc::load(&app, &u, today, if planned { at } else { now }).await?;
+    if !c.has_day { return conflict("Heute läuft kein Tracking.") }
+    if planned && !c.day.tracking && c.day.stop != Some(tickly_core::Stop::Pause) { return conflict("Es läuft kein Tracking.") }
+    if planned && at > 1440.0 { return conflict("Das Ende muss am selben Tag liegen.") }
     let before = c.with(total_balance);
-    c.day.stop_web(now, at).map_err(|m| ApiError(StatusCode::CONFLICT, m))?;
+    let at_now = if planned { at } else { now };
+    c.day.stop_web(at_now, at).map_err(|m| ApiError(StatusCode::CONFLICT, m))?;
     let s = c.with(|x| day_stat(x, today));
     // `diff`: was der Tag nach dem Beenden zum Überstundenkonto beiträgt (Minus wird jetzt verbucht, vorher zählte es nicht)
-    Ok(Json(json!({ "at": c.day.ended, "gross": s.gross, "net": s.net, "pause": s.gross - s.net, "counted": s.counted, "soll": s.soll, "start": s.start,
+    Ok(Json(json!({ "at": c.day.ended, "planned": planned, "gross": s.gross, "net": s.net, "pause": s.gross - s.net, "counted": s.counted, "soll": s.soll, "start": s.start,
         "diff": s.diff, "balanceBefore": before, "balanceAfter": c.with(total_balance) })))
+}
+
+/// Was passiert, wenn der Beginn des laufenden Trackings auf `at` gesetzt wird. Ohne `at`: nur der bisherige Beginn.
+async fn start_preview(State(app): St, h: HeaderMap, Json(r): Json<PreviewReq>) -> Res<Json<Value>> {
+    let u = auth(&app, &h, false).await?;
+    if !db::reg_policy(&app.pool).await?.allow_start_change { return forbidden("Das Ändern des Beginns ist vom Administrator ausgeschaltet") }
+    let (today, now) = app.clock(r.now);
+    let mut c = db::Calc::load(&app, &u, today, now).await?;
+    if !c.has_day { return conflict("Heute läuft kein Tracking.") }
+    let Some(from) = c.day.run_start() else { return conflict("Es läuft kein Tracking.") };
+    let before = c.with(|x| day_stat(x, today));
+    let at = r.at.unwrap_or(from);
+    c.day.set_run_start(now, at).map_err(|m| ApiError(StatusCode::CONFLICT, m))?;
+    let s = c.with(|x| day_stat(x, today));
+    Ok(Json(json!({ "from": from, "at": at, "start": s.start, "gross": s.gross, "net": s.net, "pause": s.gross - s.net, "counted": s.counted, "soll": s.soll,
+        "diff": s.diff_live, "before": { "gross": before.gross, "counted": before.counted } })))
 }
 
 #[derive(Deserialize)]

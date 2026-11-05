@@ -238,6 +238,9 @@ pub struct DayState {
     /// Der Benutzer hat bestätigt, dass er über Mitternacht wirklich arbeitet (keine Rückfrage mehr).
     #[serde(default)]
     pub night_ok: bool,
+    /// Vorab festgelegtes Ende (Minuten seit Mitternacht): zu dieser Zeit beendet der Server das Tracking von selbst.
+    #[serde(default)]
+    pub planned_end: Option<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

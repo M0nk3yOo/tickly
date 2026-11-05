@@ -93,6 +93,12 @@ pub struct RegPolicy {
     /// Läuft das Tracking so viele Stunden (Brutto), bekommt der Benutzer eine Mail und einen Hinweis (0 = aus).
     #[serde(default = "default_long_track")]
     pub long_track_hours: u32,
+    /// Benutzer dürfen den Beginn eines laufenden Trackings ändern.
+    #[serde(default = "default_true")]
+    pub allow_start_change: bool,
+    /// Benutzer dürfen ein Ende vorab festlegen (das Tracking endet zur gewählten Uhrzeit von selbst).
+    #[serde(default = "default_true")]
+    pub allow_planned_end: bool,
 }
 
 fn default_true() -> bool { true }
@@ -104,7 +110,7 @@ fn default_session_days() -> u32 { 30 }
 
 impl Default for RegPolicy {
     fn default() -> Self {
-        RegPolicy { open: true, approval: true, domains: String::new(), weekly: 40.0, passkey_prompt: true, min_pw: MIN_PW, mfa_required: false, mfa_grace_days: 7, mfa_required_since: None, session_days: 30, edit_days_back: 90, verify_email: false, verify_email_since: None, sec_questions: true, long_track_hours: 10 }
+        RegPolicy { open: true, approval: true, domains: String::new(), weekly: 40.0, passkey_prompt: true, min_pw: MIN_PW, mfa_required: false, mfa_grace_days: 7, mfa_required_since: None, session_days: 30, edit_days_back: 90, verify_email: false, verify_email_since: None, sec_questions: true, long_track_hours: 10, allow_start_change: true, allow_planned_end: true }
     }
 }
 
@@ -284,7 +290,9 @@ impl Calc {
         let mut conn = app.pool.acquire().await?;
         let stored = get_day(&mut conn, &u.id, today).await?;
         let has_day = stored.is_some();
-        let day = stored.unwrap_or_else(|| DayState::empty(now));
+        let mut day = stored.unwrap_or_else(|| DayState::empty(now));
+        // Ein vorab festgelegtes Ende, das erreicht ist, gilt sofort (gespeichert wird es vom Hintergrunddienst oder beim nächsten Ereignis)
+        day.apply_planned_end(now);
         drop(conn);
         let real = history(&app.pool, &u.id, today).await?;
         let settings = u.settings.0.clone();

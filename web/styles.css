@@ -91,7 +91,13 @@ h1,h2,h3,h4,p{margin:0}
 .seg button{border:0;background:transparent;padding:6px 13px;border-radius:8px;color:var(--ink-2);font-weight:550;font-size:13px}
 .seg button.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
 :root[data-theme=dark] .seg button.on{background:var(--line-2)}
-.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);overflow:auto}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto;overflow-y:hidden;padding-bottom:1px}
+/* Reicht die Breite nicht, steht der Scrollbalken immer da (nicht erst beim Scrollen) */
+.tabs::-webkit-scrollbar{height:10px}
+.tabs::-webkit-scrollbar-track{background:var(--line);border-radius:99px}
+.tabs::-webkit-scrollbar-thumb{background:color-mix(in oklab,var(--ink) 38%,var(--surface));border-radius:99px;border:2px solid var(--line)}
+.tabs::-webkit-scrollbar-thumb:hover{background:var(--ink-2)}
+@supports not selector(::-webkit-scrollbar){.tabs{scrollbar-width:thin;scrollbar-color:var(--line-2) var(--surface-2)}}
 .tabs button{border:0;background:none;padding:10px 14px;color:var(--ink-2);font-weight:550;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
 .tabs button:hover{color:var(--ink)}
 .tabs button.on{color:var(--brand);border-color:var(--brand)}

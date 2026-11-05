@@ -237,6 +237,12 @@ function longTrackBanner(t, ts) {
   if (!h || !S.day.tracking || t.gross < h * 60) return '';
   return `<div class="callout warn" style="margin-top:14px">${ic('day')}<div class="grow"><b>Läuft dein Tracking noch?</b> Es läuft schon seit <b>${durN(t.gross)} Stunden</b> (Brutto, seit ${t.start != null ? hm(t.start) : '–'}). Hast du vergessen, es zu beenden?</div><button class="btn sm primary" data-a="stopOpen" data-m="now">Jetzt beenden</button><button class="btn sm" data-a="stopOpen" data-m="custom">Ende festlegen …</button></div>`;
 }
+/** Vorab festgelegtes Ende: Hinweis mit Ändern/Aufheben */
+function plannedEndBanner() {
+  const pe = S.day.plannedEnd;
+  if (pe == null || !(S.day.tracking || S.day.stop === 'pause')) return '';
+  return `<div class="callout info" style="margin-top:14px">${ic('day')}<div class="grow"><b>Ende vorab festgelegt:</b> Das Tracking endet um <b>${hm(pe)} Uhr</b> von selbst${S.now >= pe ? '' : ` (in ${dur(pe - S.now).replace(' h', '')} h)`}. Bis dahin läuft die Zeit normal weiter.</div><button class="btn sm" data-a="stopOpen" data-m="custom" data-planned="1">Ändern …</button><button class="btn sm" data-a="planClear">Aufheben</button></div>`;
+}
 /** Plausibilitätsprüfung: das Tracking läuft über Nacht und passt nicht zu den bisherigen Zeiten */
 function nightBanner() {
   const n = S.night;
@@ -252,7 +258,7 @@ function clashBanner() {
 function nightSummary(m) {
   if (m.err) return `<div class="callout warn">${ic('info')}<span>${esc(m.err)}</span></div>`;
   const p = m.prev; if (!p) return `<p class="muted sm">Berechne …</p>`;
-  return `<div class="stopsum"><div class="kv"><span>Tag</span><b class="mono">${dMid(p.date)}</b></div><div class="kv"><span>Arbeitsbeginn</span><b class="mono">${hm(p.start)}</b></div><div class="kv"><span>Ende</span><b class="mono">${hm(p.at)}</b></div>
+  return `<div class="stopsum"><div class="kv"><span>Tag</span><b class="mono">${dMid(p.date)}</b></div><div class="kv"><span>Arbeitsbeginn</span><b class="mono">${hm(p.start)}</b></div><div class="kv"><span>${p.planned ? 'Ende (vorab festgelegt)' : 'Ende'}</span><b class="mono">${hm(p.at)}</b></div>
     <div class="kv"><span>Brutto (Anwesenheit)</span><b class="mono">${dur(p.gross)}</b></div><div class="kv"><span>Pause (abgezogen)</span><b class="mono">${p.pause > 0 ? '−' : ''}${dur(p.pause)}</b></div>
     <div class="kv"><span><b>Netto</b></span><b class="mono">${dur(p.net)}</b></div></div>`;
 }
@@ -264,7 +270,16 @@ function stopSummary(m) {
     <div class="kv"><span><b>Netto</b></span><b class="mono">${dur(p.net)}</b></div>${p.soll ? `<div class="kv"><span>Tagessoll</span><b class="mono">${dur(p.soll)}</b></div>` : ''}
     ${p.diff != null ? `<div class="kv"><span><b>Saldo des Tages</b></span><b class="mono">${sgn(p.diff)}</b></div>` : ''}
     ${p.balanceBefore != null ? `<div class="kv"><span>Überstundenkonto</span><b class="mono">${sgn(p.balanceBefore)} → ${sgn(p.balanceAfter)}</b></div>` : ''}</div>
-    ${p.diff != null && p.diff < -0.5 ? `<div class="callout warn" style="margin-top:10px">${ic('info')}<span>Du beendest mit <b>${dur(-p.diff)} Minus</b> gegenüber dem Tagessoll. Das wird nach dem Beenden dem Überstundenkonto abgezogen.</span></div>` : ''}`;
+    ${p.diff != null && p.diff < -0.5 ? `<div class="callout warn" style="margin-top:10px">${ic('info')}<span>${p.planned ? 'Du beendest' : 'Du beendest'} mit <b>${dur(-p.diff)} Minus</b> gegenüber dem Tagessoll. Das wird nach dem Beenden dem Überstundenkonto abgezogen.</span></div>` : ''}`;
+}
+function startSummary(m) {
+  if (m.err) return `<div class="callout warn">${ic('info')}<span>${esc(m.err)}</span></div>`;
+  const p = m.prev; if (!p) return `<p class="muted sm">Berechne …</p>`;
+  const d = p.counted - p.before.counted, same = Math.abs(p.at - p.from) < .01;
+  return `<div class="stopsum"><div class="kv"><span>Beginn des laufenden Trackings</span><b class="mono">${same ? hm(p.at) : `${hm(p.from)} → ${hm(p.at)}`}</b></div>
+    <div class="kv"><span>Brutto (Anwesenheit) heute</span><b class="mono">${dur(p.before.gross)}${same ? '' : ` → ${dur(p.gross)}`}</b></div>
+    <div class="kv"><span><b>${S.set.mode === 'net' ? 'Netto' : 'Gezählt'}</b></span><b class="mono">${dur(p.before.counted)}${same ? '' : ` → ${dur(p.counted)} <span class="${d >= 0 ? 'pos' : 'neg'}">(${d >= 0 ? '+' : '−'}${dur(Math.abs(d)).replace(' h', '')})</span>`}</b></div>
+    ${p.soll ? `<div class="kv"><span>Tagessoll</span><b class="mono">${dur(p.soll)}</b></div>` : ''}</div>`;
 }
 function mfaBanner() {
   const m = S.mfa; if (!m || !m.required || m.compliant) return '';
@@ -383,7 +398,7 @@ function vDashboard() {
   const trkBadge = `<span class="badge ${trkTone(ts)}"><span class="dot ${ts.cls}"></span>${ts.label}</span>`;
   const first = S.me.name.split(' ')[0];
   let msg;
-  const noWork = !S.day.segs.length, dayEnded = dayClosed(), longTrack = clashBanner() + (nightBanner() || longTrackBanner(t, ts)), st0 = t.start != null ? t.start : S.now - 30;
+  const noWork = !S.day.segs.length, dayEnded = dayClosed(), longTrack = clashBanner() + (nightBanner() || longTrackBanner(t, ts)) + plannedEndBanner(), st0 = t.start != null ? t.start : S.now - 30;
   if (ts.key === 'ask') msg = `Der Rechner läuft seit <b>${hm(S.day.start)}</b>, aber das Tracking wurde noch nicht gestartet.`;
   else if (noWork) msg = `Heute wird noch nicht getrackt. Starte das Tracking im Companion, hier im Web oder lege Zeitfenster für den automatischen Start fest.`;
   else if (ts.key === 'paused') msg = `Das Tracking ist seit <b>${hm(S.day.ended)}</b> pausiert. Die Pause wird nicht gezählt – der Tag bleibt offen.`;
@@ -420,7 +435,7 @@ function vDashboard() {
           <div class="kv"><span>Erfassungsmodus</span><b>${S.set.mode === 'net' ? 'Netto' : 'Brutto'}</b></div>
         </div></div>
       ${longTrack}
-      ${(S.day.tracking || ts.key === 'paused') && !longTrack ? `<div class="row wrap" style="margin-top:14px;gap:8px"><button class="btn" data-a="stopOpen" data-m="now" title="Tracking jetzt beenden – zeigt vorher Zeitpunkt, Brutto und Netto">${ic('power', 15)} Tracking beenden</button><button class="btn" data-a="stopOpen" data-m="custom" title="Beenden mit einem eigenen Ende, z. B. wenn du es vergessen hast">${ic('day', 15)} Ende festlegen …</button></div>` : ''}
+      ${(S.day.tracking || ts.key === 'paused') && !longTrack ? `<div class="row wrap" style="margin-top:14px;gap:8px"><button class="btn" data-a="stopOpen" data-m="now" title="Tracking jetzt beenden – zeigt vorher Zeitpunkt, Brutto und Netto">${ic('power', 15)} Tracking beenden</button>${S.day.tracking && S.limits.startChange ? `<button class="btn" data-a="startOpen" title="Beginn des laufenden Trackings ändern, z. B. wenn du früher angefangen hast">${ic('edit', 15)} Beginn ändern …</button>` : ''}<button class="btn" data-a="stopOpen" data-m="custom" title="Beenden mit einem eigenen Ende, z. B. wenn du es vergessen hast">${ic('day', 15)} Ende festlegen …</button></div>` : ''}
       ${ts.key === 'ask' ? `<div style="margin-top:14px">${askBox()}</div>` : ''}
       ${ts.key === 'paused' ? `<div class="callout warn" style="margin-top:14px">${ic('pause')}<div class="grow"><b>Tracking pausiert.</b> Zeit wird nicht gezählt, bis du das Tracking fortsetzt.</div><button class="btn sm primary" data-a="cAct" data-k="start">${ic('play', 13)} Tracking fortsetzen</button></div>` : ''}
       ${ts.key === 'idle' ? `<div class="callout warn" style="margin-top:14px">${ic('info')}<div class="grow"><b>Tracking ist aus.</b> Es startet automatisch im nächsten Zeitfenster oder auf Knopfdruck.</div><button class="btn sm primary" data-a="cAct" data-k="start">${ic('play', 13)} Tracking starten</button></div>` : ''}
@@ -528,7 +543,7 @@ function vDay() {
   const date = S.dayDate, s = dayStat(date), info = s.info, isToday = date === TODAY, liveDay = isToday && !dayClosed();
   const nav = `<div class="row wrap"><div class="row gap-s"><button class="ibtn bd" data-a="dayNav" data-n="-1" title="Vorheriger Tag">${ic('chevL')}</button><button class="ibtn bd" data-a="dayNav" data-n="1" title="Nächster Tag" ${date >= TODAY ? 'disabled style="opacity:.4"' : ''}>${ic('chevR')}</button></div>
     ${dateField('dayDate', date, { max: TODAY, cls: 'inl' })}
-    <h2 style="font-size:18px;font-weight:650">${dLong(date)}</h2>${isToday ? '<span class="badge brand">Heute</span>' : `<button class="btn sm" data-a="dayNav" data-to="${TODAY}">Zu heute</button>`}${canEditDay(date) ? `<button class="btn sm right" data-a="dayEdit">${ic('edit', 14)} ${s.has ? 'Zeiten bearbeiten' : 'Zeit eintragen'}</button>` : ''}</div>`;
+    <h2 style="font-size:18px;font-weight:650">${dLong(date)}</h2>${isToday ? '<span class="badge brand">Heute</span>' : `<button class="btn sm" data-a="dayNav" data-to="${TODAY}">Zu heute</button>`}${liveDay && S.day.tracking && S.limits.startChange ? `<button class="btn sm right" data-a="startOpen" title="Beginn des laufenden Trackings ändern">${ic('edit', 14)} Beginn ändern</button>` : ''}${canEditDay(date) ? `<button class="btn sm ${liveDay && S.day.tracking && S.limits.startChange ? '' : 'right'}" data-a="dayEdit">${ic('edit', 14)} ${s.has ? 'Zeiten bearbeiten' : 'Zeit eintragen'}</button>` : ''}</div>`;
   if (s.future) return `<div class="stack">${nav}<div class="card empty"><div class="big">${ic('cal', 26)}</div><h3>Dieser Tag liegt in der Zukunft</h3><p>${info.holiday ? esc(info.holiday) + ' – ' : ''}Soll: ${dur(info.soll)}</p></div></div>`;
   if (!s.has) {
     const k = info.kind, label = k ? KINDS[k].n + (info.holiday ? ': ' + info.holiday : '') : info.weekend ? 'Wochenende' : 'Keine Arbeitszeit erfasst';
@@ -554,7 +569,7 @@ function vDay() {
     ${info.holiday || info.kind ? `<div class="callout warn">${ic('info')}<span>Auf diesen Tag ${info.holiday ? `fällt der Feiertag <b>${esc(info.holiday)}</b>` : `entfällt ${KINDS[info.kind].n}`}. Es wurde trotzdem gearbeitet – die gesamte Zeit zählt als Überstunden.</span></div>` : ''}
     <div class="g4" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
       <div class="tile sm"><div class="l">Arbeitsbeginn</div><div class="v mono">${hm(s.start)}</div><div class="s">automatisch erkannt</div></div>
-      <div class="tile sm"><div class="l">${liveDay ? 'Anwesenheit (Brutto)' : 'Arbeitsende'}</div><div class="v mono">${liveDay ? durN(s.gross) + '<small>h</small>' : hm(ended)}</div><div class="s">${liveDay ? (S.day.stop === 'pause' ? 'Tracking pausiert' : 'seit Arbeitsbeginn') : (isToday && S.day.stop === 'shutdown' ? 'Rechner aus' : 'Companion beendet') + ' · Brutto ' + dur(s.gross)}</div></div>
+      <div class="tile sm"><div class="l">${liveDay ? 'Anwesenheit (Brutto)' : 'Arbeitsende'}</div><div class="v mono">${liveDay ? durN(s.gross) + '<small>h</small>' : hm(ended)}</div><div class="s">${liveDay ? (S.day.stop === 'pause' ? 'Tracking pausiert' : 'seit Arbeitsbeginn') + (S.day.plannedEnd != null ? ` · endet um ${hm(S.day.plannedEnd)}` : '') : (isToday && S.day.stop === 'shutdown' ? 'Rechner aus' : 'Companion beendet') + ' · Brutto ' + dur(s.gross)}</div></div>
       <div class="tile sm"><div class="l">Pausen</div><div class="v mono">${durN(S.set.mode === 'net' ? s.brk : Math.max(s.rule, s.lockedBreak))}<small>h</small></div><div class="s">${S.set.mode === 'net' ? 'abgezogen' : 'nicht abgezogen (Brutto)'}</div></div>
       <div class="tile sm"><div class="l">${S.set.mode === 'net' ? 'Netto-Arbeitszeit' : 'Brutto-Arbeitszeit'}</div><div class="v mono">${durN(s.counted)}<small>h</small></div><div class="s">Soll ${dur(s.soll)}</div></div>
       <div class="tile sm"><div class="l">Tagessaldo</div><div class="v mono">${sgn(dayDiff)}</div><div class="s">${liveDay ? 'Tag läuft noch' : 'Tag abgeschlossen'}</div></div>
@@ -1032,6 +1047,8 @@ function vAdmin() {
           <div class="setrow"><div class="tx"><b>Karenzzeit</b><span>So viele Tage ab Einschalten (bzw. ab Anlage des Kontos) darf man noch ohne arbeiten. 0 = sofort einrichten. Währenddessen erscheint ein Hinweis, die Anmeldung gilt 24 Stunden und bei jeder Anmeldung folgt eine Erinnerung.</span></div><input type="number" min="0" max="365" value="${S.reg.mfaGraceDays}" data-in="reg.mfaGraceDays" data-type="num" style="width:84px" ${S.reg.mfaRequired ? '' : 'disabled'}><span class="muted">Tage</span></div>
           <div class="setrow"><div class="tx"><b>Sitzungsdauer</b><span>So lange bleibt man angemeldet. Konten ohne Passkey/Authenticator unter der Pflicht müssen sich täglich neu anmelden. Gilt für neue Anmeldungen.</span></div><input type="number" min="1" max="365" value="${S.reg.sessionDays}" data-in="reg.sessionDays" data-type="num" style="width:84px"><span class="muted">Tage</span></div>
           <div class="setrow"><div class="tx"><b>Nachträgliches Bearbeiten von Zeiten</b><span>So viele Tage rückwirkend dürfen Benutzer Zeiten korrigieren oder manuell ergänzen. 0 = nicht erlaubt. Jede Änderung steht im Protokoll.</span></div><input type="number" min="0" max="3650" value="${S.reg.editDaysBack}" data-in="reg.editDaysBack" data-type="num" style="width:84px"><span class="muted">Tage</span></div>
+          ${setRow('Beginn eines laufenden Trackings ändern', 'Benutzer dürfen den Beginn des laufenden Trackings früher oder später setzen (Übersicht und Tagesansicht, Knopf „Beginn ändern“). Jede Änderung steht im Protokoll.', toggle('reg.allowStartChange', S.reg.allowStartChange !== false))}
+          ${setRow('Ende vorab festlegen', 'Benutzer dürfen beim Beenden eine spätere Uhrzeit wählen: Das Tracking läuft weiter und endet zu dieser Zeit von selbst, auch ohne Companion. Ausgeschaltet muss das Ende jetzt oder früher liegen.', toggle('reg.allowPlannedEnd', S.reg.allowPlannedEnd !== false))}
           ${S.reg.mfaRequired ? `<div class="callout ${late.length ? 'warn' : 'info'}" style="margin-top:12px">${ic('shield')}<span>${need.length ? `<b>${need.length} Konto${need.length === 1 ? '' : 'en'} ohne Passkey/Authenticator</b>${late.length ? `, bei ${late.length} ist die Karenzzeit abgelaufen (nur Einrichtung möglich)` : ''}: ${need.map(u => esc(u.name)).join(', ')}.` : 'Alle aktiven Konten haben Passkey oder Authenticator-App eingerichtet.'}</span></div>` : ''}
           <p class="hint" style="margin-top:10px">Die Companion-App meldet weiter Zeiten, auch wenn die Frist abgelaufen ist, damit keine Arbeitszeit verloren geht. Sie weist den Benutzer ebenfalls auf die Einrichtung hin.</p></div>`;
       })()}</div>`;
@@ -1090,14 +1107,24 @@ function renderModal() {
       <p class="hint">Solange nichts eingerichtet ist, bleibt deine Anmeldung 24 Stunden gültig, und du wirst bei jeder Anmeldung daran erinnert. Das Einrichten dauert etwa eine Minute.</p></div>
     <div class="mf"><button class="btn" data-a="modalClose">Später erinnern</button><button class="btn primary" data-a="mfaGo">Jetzt einrichten</button></div></div></div>`;
   if (m.type === 'stop') {
-    const custom = m.mode === 'custom', at = m.prev ? m.prev.at : m.at;
-    return `<div class="ov"><div class="modal" style="width:min(460px,100%)"><div class="mh"><h3>Tracking beenden</h3><button class="ibtn right" data-a="modalClose">${ic('x')}</button></div>
+    const custom = m.mode === 'custom', at = m.prev ? m.prev.at : m.at, pl = custom && m.prev && m.prev.planned, can = S.limits.plannedEnd;
+    return `<div class="ov"><div class="modal" style="width:min(460px,100%)"><div class="mh"><h3>${pl ? 'Ende vorab festlegen' : 'Tracking beenden'}</h3><button class="ibtn right" data-a="modalClose">${ic('x')}</button></div>
     <div class="mb">${custom
-      ? `<label class="f">Ende (Uhrzeit)${timeField('modal.at', m.at)}<span class="hint">Zwischen Arbeitsbeginn und jetzt (${hm(S.now)}). Alles danach wird nicht gezählt.</span></label>`
+      ? `<label class="f">Ende (Uhrzeit)${timeField('modal.at', m.at)}<span class="hint">${can ? `Bis jetzt (${hm(S.now)}) beendet es das Tracking sofort, alles danach wird nicht gezählt. Eine <b>spätere Uhrzeit</b> legt das Ende vorab fest: Das Tracking läuft weiter und endet dann von selbst.` : `Zwischen Arbeitsbeginn und jetzt (${hm(S.now)}). Alles danach wird nicht gezählt.`}</span></label>`
       : `<p>Das Tracking endet <b>jetzt, um ${hm(m.prev ? m.prev.at : S.now)} Uhr</b>. Danach wird nichts mehr gezählt.</p>`}
+      ${pl ? `<div class="callout info">${ic('day')}<span>Das Tracking läuft weiter und endet um <b>${hm(at)} Uhr</b> von selbst. Die Zahlen unten zeigen den Tag, wie er dann aussähe. Du kannst das Ende bis dahin ändern oder aufheben.</span></div>` : ''}
       ${stopSummary(m)}
-      <p class="sm"><a href="#" data-a="stopMode" style="color:var(--brand);font-weight:600">${custom ? 'Stattdessen jetzt beenden' : 'Anderes Ende festlegen …'}</a></p></div>
-    <div class="mf"><button class="btn" data-a="modalClose">Abbrechen</button><button class="btn primary" data-a="stopDo" ${m.prev ? '' : 'disabled'}>${custom ? `Mit Ende ${hm(at)} beenden` : 'Tracking beenden'}</button></div></div></div>`;
+      <p class="sm"><a href="#" data-a="stopMode" style="color:var(--brand);font-weight:600">${custom ? 'Stattdessen jetzt beenden' : (can ? 'Ende festlegen (auch für später) …' : 'Anderes Ende festlegen …')}</a></p></div>
+    <div class="mf"><button class="btn" data-a="modalClose">Abbrechen</button><button class="btn primary" data-a="stopDo" ${m.prev ? '' : 'disabled'}>${pl ? `Ende für ${hm(at)} vormerken` : custom ? `Mit Ende ${hm(at)} beenden` : 'Tracking beenden'}</button></div></div></div>`;
+  }
+  if (m.type === 'startat') {
+    const cur = m.prev ? m.prev.at : m.sat, changed = m.prev && Math.abs(m.prev.at - m.prev.from) >= .01;
+    return `<div class="ov"><div class="modal" style="width:min(460px,100%)"><div class="mh"><h3>Beginn ändern</h3><button class="ibtn right" data-a="modalClose">${ic('x')}</button></div>
+    <div class="mb"><p>Das laufende Tracking begann um <b>${m.from != null ? hm(m.from) : '…'} Uhr</b>. Setze den Beginn auf die Zeit, zu der du wirklich angefangen hast. Die Zeit wird sofort neu gerechnet, auch im Companion.</p>
+      <label class="f">Beginn (Uhrzeit)${timeField('modal.sat', m.sat == null ? 0 : m.sat)}<span class="hint">Nicht später als jetzt (${hm(S.now)}) und nicht vor der Arbeitszeit, die davor schon eingetragen ist.</span></label>
+      <div class="row wrap" style="gap:6px">${[[-30, '30 Min. früher'], [-5, '5 Min. früher'], [5, '5 Min. später']].map(([d, l]) => `<button class="chip" data-a="startShift" data-d="${d}">${l}</button>`).join('')}</div>
+      ${startSummary(m)}</div>
+    <div class="mf"><button class="btn" data-a="modalClose">Abbrechen</button><button class="btn primary" data-a="startDo" ${changed ? '' : 'disabled'}>${m.prev ? `Beginn auf ${hm(cur)} setzen` : 'Beginn setzen'}</button></div></div></div>`;
   }
   if (m.type === 'night') {
     const prev = m.day === 'prev', n = S.night || {};

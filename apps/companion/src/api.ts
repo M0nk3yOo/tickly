@@ -57,7 +57,7 @@ const mock: { s: UiState } = {
     server: "https://zeit.example.com",
     deviceName: "DESKTOP-ANDRE",
     userName: "André Becker",
-    version: "0.9.14",
+    version: "0.9.15",
     os: "windows",
     autostart: true,
     view: {

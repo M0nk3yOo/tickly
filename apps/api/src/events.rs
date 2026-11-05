@@ -18,6 +18,8 @@ pub struct Ev {
     pub answer: Option<String>,
     /// Nur „stopat“: gewünschtes Ende in Minuten seit Mitternacht.
     pub until: Option<f64>,
+    /// Nur „startat“: gewünschter Beginn des laufenden Trackings in Minuten seit Mitternacht.
+    pub since: Option<f64>,
     /// Kommt aus der Weboberfläche (nicht vom Companion). Setzt der Server, nie der Client.
     #[serde(skip)]
     pub web: bool,
@@ -63,6 +65,37 @@ pub async fn apply(app: &App, conn: &mut PgConnection, u: &UserRow, abs: &[Absen
                 db::put_day(conn, &u.id, pd, &ps).await?;
             }
         }
+    }
+    // Ein vorab festgelegtes Ende, das erreicht ist, wird sofort angewendet und gespeichert (vor dem Ereignis selbst)
+    if let Some(d) = day.as_mut() {
+        if d.apply_planned_end(now) { db::put_day(conn, &u.id, date, d).await?; }
+    }
+    // Ende vorab festlegen oder aufheben (nur Weboberfläche)
+    if matches!(kind, "planend" | "planclear") {
+        if !ev.web && !app.cfg.demo { return bad("Das Ende legt nur die Weboberfläche fest") }
+        let res = match day.as_mut() {
+            None => Err("Heute läuft kein Tracking.".to_string()),
+            Some(d) if kind == "planclear" => d.clear_planned_end(now),
+            Some(d) => match ev.until { Some(at) if at.is_finite() => d.set_planned_end(now, at), _ => return bad("Bitte ein Ende angeben") },
+        };
+        return match res {
+            Ok(()) => { db::put_day(conn, &u.id, date, &day.expect("Tag")).await?; Ok(Ok(())) }
+            Err(m) => Ok(Err(m)),
+        };
+    }
+    // Beginn des laufenden Trackings ändern (nur Weboberfläche): der Companion übernimmt den Tageszustand bei der nächsten Abfrage
+    if kind == "startat" {
+        if !ev.web && !app.cfg.demo { return bad("Den Beginn ändert nur die Weboberfläche") }
+        let res = match (day.as_mut(), ev.since) {
+            (None, _) => Err("Heute läuft kein Tracking.".to_string()),
+            (Some(_), None) => return bad("Bitte einen Beginn angeben"),
+            (Some(_), Some(at)) if !at.is_finite() => return bad("Bitte einen Beginn angeben"),
+            (Some(d), Some(at)) => d.set_run_start(now, at).map(|_| ()),
+        };
+        return match res {
+            Ok(()) => { db::put_day(conn, &u.id, date, &day.expect("Tag")).await?; Ok(Ok(())) }
+            Err(m) => Ok(Err(m)),
+        };
     }
     // Zeiterfassung im Web (ohne Companion): Start, Beenden jetzt, Beenden zu einem früheren Zeitpunkt
     let web_stop = matches!(kind, "stop" | "stopat");

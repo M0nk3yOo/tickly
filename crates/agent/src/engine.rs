@@ -790,6 +790,31 @@ mod tests {
     }
 
     #[test]
+    fn a_new_start_set_in_the_web_counts_in_the_running_companion_within_seconds() {
+        let world = replay_world(false, true);
+        let (_pcs, platform) = pc("Code");
+        let mut e = Engine::new(platform, ReplayServer(world.clone()), Outbox::in_memory());
+        e.start(afternoon(0), true);
+        e.action(afternoon(1), Action::Resume);
+        e.tick(afternoon(2));
+        assert_eq!(e.view().state.track, "running");
+        let before = e.view_at(afternoon(30)).state;
+        let start = before.start.unwrap();
+
+        // Früher gesetzt (im Web): nach der nächsten Abfrage rechnet der Companion mit dem neuen Beginn
+        e.tick(afternoon(9));
+        let now = { let l = afternoon(10).with_timezone(&chrono_tz::Europe::Berlin); l.num_seconds_from_midnight() as f64 / 60.0 };
+        world.lock().unwrap().day.as_mut().unwrap().set_run_start(now, start - 45.0).unwrap();
+        e.tick(afternoon(11));
+        assert_eq!(e.view().state.start, Some(start), "noch nicht abgefragt");
+        e.tick(afternoon(14));
+        let after = e.view_at(afternoon(30)).state;
+        assert_eq!(after.start, Some(start - 45.0));
+        assert!((after.counted - before.counted - 45.0).abs() < 0.5, "{} -> {}", before.counted, after.counted);
+        assert_eq!(e.view().pending, 0);
+    }
+
+    #[test]
     fn pause_offline_shows_immediately_and_is_sent_later() {
         let world = replay_world(false, true);
         let (_pcs, platform) = pc("Code");

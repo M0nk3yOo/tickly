@@ -1,5 +1,14 @@
 # Änderungen
 
+## 0.9.15
+
+Aktualisierung von 0.9.14: Es ändert sich nur der Server mit der Weboberfläche (keine Datenbankänderung); der Companion braucht kein Update und läuft in 0.9.14 weiter.
+
+- **Ende vorab festlegen.** Beim Beenden mit eigener Uhrzeit (*Ende festlegen …*) darf die Zeit jetzt auch **später** liegen: Das Tracking läuft weiter und endet zu dieser Zeit von selbst, auch ohne Companion, und zwar auf die Minute genau, selbst wenn es erst später bemerkt wird (Prüfung alle 10 Sekunden). Die Übersicht zeigt das Ende mit *Ändern …* und *Aufheben*; beendest du von Hand, entfällt es. Wird der Rechner vorher heruntergefahren, entfällt das Ende ebenfalls (Hinweis in den Ereignissen), und das Tracking läuft beim nächsten Start normal weiter. Die Vorschau rechnet den Tag, wie er dann aussähe.
+- **Administrator-Schalter** (Serververwaltung → Richtlinien, bei „Nachträgliches Bearbeiten“): *Beginn eines laufenden Trackings ändern* und *Ende vorab festlegen* lassen sich ausschalten (Standard: an). Ausgeschaltet verschwindet der Knopf bzw. das Ende muss jetzt oder früher liegen.
+- **Reiterleisten:** Der Scrollbalken erscheint nur, wenn die Reiter nicht in die Breite passen, und dann dauerhaft; der Balken nach oben/unten ist weg. *Beginn ändern …* steht vor *Ende festlegen …*.
+- **Beginn des laufenden Trackings ändern.** Neuer Knopf *Beginn ändern …* in Übersicht und Tagesansicht: Der Beginn lässt sich früher oder später setzen, mit Vorschau von Brutto und Netto. Die neue Zeit zählt sofort, auch im Companion (er übernimmt sie nach wenigen Sekunden). Früher geht bis zum Ende der vorherigen Arbeitszeit; die Änderung steht in den Ereignissen und im Protokoll.
+
 ## 0.9.14
 
 Aktualisierung von 0.9.13: Es ändert sich nur die Weboberfläche (keine Datenbankänderung). Der Companion ist funktional unverändert, ein Update ist nicht nötig.

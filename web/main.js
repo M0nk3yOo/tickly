@@ -402,7 +402,8 @@ const H = {
     toast({ newday: 'Neuer Arbeitstag – Rechnerstart ' + hm(S.now) + ' gemerkt', boot: 'Rechner gestartet', lock: 'Bildschirm gesperrt', unlock: 'Entsperrt', pause: 'Tracking pausiert – die Pause wird nicht gezählt', end: 'Tracking beendet – Arbeitsende gesetzt', quit: 'Companion beendet – Tracking beendet', shutdown: 'Rechner heruntergefahren', start: 'Tracking läuft' }[k]); await sync();
   },
   /* Zeiterfassung im Web: Beenden jetzt oder mit eigenem Ende, mit Vorschau von Brutto und Netto */
-  async stopOpen(el) { S.modal = { type: 'stop', mode: el.dataset.m, at: Math.floor(S.now), prev: null, err: '' }; renderModalOnly(); await H.stopPreview(); },
+  async stopOpen(el) { S.modal = { type: 'stop', mode: el.dataset.m, at: el.dataset.planned && S.day.plannedEnd != null ? S.day.plannedEnd : Math.floor(S.now), prev: null, err: '' }; renderModalOnly(); await H.stopPreview(); },
+  async planClear() { await api('POST', '/companion', { kind: 'planclear', now: nowQ() }); toast('Vorab festgelegtes Ende aufgehoben – das Tracking läuft weiter'); await sync(); },
   async stopMode(el, e) { e.preventDefault(); S.modal.mode = S.modal.mode === 'custom' ? 'now' : 'custom'; S.modal.prev = null; S.modal.err = ''; renderModalOnly(); await H.stopPreview(); },
   async stopPreview() {
     const m = S.modal; if (!m || m.type !== 'stop') return;
@@ -413,8 +414,27 @@ const H = {
   },
   async stopDo() {
     const m = S.modal;
+    if (m.mode === 'custom' && m.prev && m.prev.planned) {
+      await api('POST', '/companion', { kind: 'planend', until: m.at, now: nowQ() });
+      closeModal(); toast(`Ende um ${hm(m.at)} Uhr vorgemerkt – das Tracking läuft bis dahin weiter`); await sync(); return;
+    }
     if (m.mode === 'custom') await api('POST', '/companion', { kind: 'stopat', until: m.at, now: nowQ() }); else await api('POST', '/companion', { kind: 'stop', now: nowQ() });
     closeModal(); toast('Tracking beendet – Ende ' + hm(m.prev ? m.prev.at : S.now)); await sync();
+  },
+  /* Beginn des laufenden Trackings ändern: Vorschau, dann setzen; die Änderung gilt sofort (der Companion holt sie bei der nächsten Abfrage) */
+  async startOpen() { S.modal = { type: 'startat', sat: null, from: null, prev: null, err: '' }; renderModalOnly(); await H.startPreview(); },
+  startShift(el) { const m = S.modal; m.sat = Math.max(0, Math.min(1440, (m.prev ? m.prev.at : m.sat) + +el.dataset.d)); m.prev = null; m.err = ''; renderModalOnly(); return H.startPreview(); },
+  async startPreview() {
+    const m = S.modal; if (!m || m.type !== 'startat') return;
+    const at = m.sat;
+    try { const r = await api('POST', '/tracking/start-preview', { at, now: nowQ() }); if (S.modal === m && m.sat === at) { m.prev = r; m.err = ''; m.from = r.from; if (m.sat == null) m.sat = r.at; } }
+    catch (e) { if (S.modal === m && m.sat === at) { m.prev = null; m.err = e.message; } }
+    renderModalOnly();
+  },
+  async startDo() {
+    const m = S.modal, at = m.prev.at;
+    await api('POST', '/companion', { kind: 'startat', since: at, now: nowQ() });
+    closeModal(); toast(`Beginn auf ${hm(at)} gesetzt – die Zeit ist neu gerechnet`); await sync();
   },
   /* Plausibilitätsprüfung nach Mitternacht */
   async clashOk() { await api('POST', '/tracking/device/ack', {}); S.clash = null; await sync(); },
@@ -589,6 +609,7 @@ const H = {
 async function afterChange(path) {
   // Erst nach der Antwort neu zeichnen (nicht im Ereignis des Eingabefelds, das gerade den Fokus verliert)
   if (path === 'modal.nat') { if (S.modal) { S.modal.prev = null; S.modal.err = ''; } return H.nightPreview(); }
+  if (path === 'modal.sat') { if (S.modal) { S.modal.prev = null; S.modal.err = ''; } return H.startPreview(); }
   if (path === 'modal.at') { if (S.modal) { S.modal.prev = null; S.modal.err = ''; } return H.stopPreview(); }
   if (path.startsWith('set.')) return saveSet();
   if (path.startsWith('reg.')) return saveReg();

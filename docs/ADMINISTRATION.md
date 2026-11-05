@@ -36,6 +36,8 @@ Liste mit Status (aktiv, wartet auf Freigabe, eingeladen, gesperrt), Rolle, heut
 | Karenzzeit | Tage (0–365, Standard 7), die man noch ohne arbeiten darf. Währenddessen: Hinweis, Erinnerung bei jeder Anmeldung, Sitzung nur **24 Stunden**. Danach nur noch die Seite „Konto absichern“. |
 | Sitzungsdauer | 1–365 Tage (Standard 30) für alle mit MFA bzw. ohne Pflicht. |
 | Nachträgliches Bearbeiten | Wie viele Tage rückwirkend Zeiten korrigiert/ergänzt werden dürfen (0 = nicht erlaubt). |
+| Beginn eines laufenden Trackings ändern | Schaltet den Knopf *Beginn ändern* aus oder an (Standard: an). Jede Änderung steht im Protokoll. |
+| Ende vorab festlegen | Erlaubt beim Beenden eine spätere Uhrzeit: Das Tracking endet dann von selbst (Standard: an). Ausgeschaltet muss das Ende jetzt oder früher liegen; schon festgelegte Enden gelten weiter und lassen sich aufheben. |
 
 Die Karenzzeit beginnt beim Einschalten der Pflicht (bei neuen Konten mit der Freischaltung). Erneutes Speichern setzt sie nicht zurück. Die Companion-App meldet auch nach Ablauf weiter Zeiten, damit keine Arbeitszeit verloren geht. Hat ein Benutzer Handy und Wiederherstellungscodes verloren, setzt du TOTP in der Benutzerliste zurück.
 

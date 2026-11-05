@@ -65,7 +65,7 @@ impl Track {
 
 impl DayState {
     fn blank(now: f64) -> DayState {
-        DayState { start: now, tracking: false, ended: None, last_app: "other".into(), segs: vec![], events: vec![], stop: Some(Stop::Idle), declined: None, last_beat: None, edited: false, carried: false, night_ok: false }
+        DayState { start: now, tracking: false, ended: None, last_app: "other".into(), segs: vec![], events: vec![], stop: Some(Stop::Idle), declined: None, last_beat: None, edited: false, carried: false, night_ok: false, planned_end: None }
     }
 
     /// Noch nichts erfasst: der Companion hat sich heute nicht gemeldet.
@@ -284,6 +284,139 @@ impl DayState {
         Ok(())
     }
 
+    /// Index des ersten Abschnitts des laufenden Trackings: der Lauf reicht vom offenen Abschnitt zurück, solange die Abschnitte
+    /// lückenlos aneinandergrenzen (Programmwechsel und Sperren gehören dazu, ein Neustart oder eine Pause beendet ihn).
+    fn run_first(&self) -> Option<usize> {
+        let last = self.segs.len().checked_sub(1)?;
+        if !self.tracking || self.segs[last].to.is_some() || self.segs[last].kind == SegKind::Off {
+            return None;
+        }
+        let mut i = last;
+        while i > 0 {
+            let p = &self.segs[i - 1];
+            if p.kind == SegKind::Off || !p.to.is_some_and(|t| (t - self.segs[i].from).abs() < 1e-6) {
+                break;
+            }
+            i -= 1;
+        }
+        Some(i)
+    }
+
+    /// Beginn des laufenden Trackings (Minuten seit Mitternacht), `None` wenn nichts läuft.
+    pub fn run_start(&self) -> Option<f64> {
+        self.run_first().map(|i| self.segs[i].from)
+    }
+
+    /// Beginn des laufenden Trackings ändern: früher (die Zeit davor wird mitgezählt) oder später (alles davor entfällt).
+    /// Gibt den bisherigen Beginn zurück. Früher als das Ende der vorherigen Arbeitszeit geht nicht; ein Neustart-Loch davor
+    /// darf überdeckt werden. Das Ergebnis gilt sofort: der laufende Abschnitt rechnet ab dem neuen Beginn weiter.
+    pub fn set_run_start(&mut self, now: f64, at: f64) -> Result<f64, String> {
+        let Some(i) = self.run_first() else { return Err("Es läuft kein Tracking.".into()) };
+        if !at.is_finite() || at < 0.0 {
+            return Err("Ungültige Uhrzeit.".into());
+        }
+        if at > now + 1e-6 {
+            return Err("Der Beginn darf nicht in der Zukunft liegen.".into());
+        }
+        let old = self.segs[i].from;
+        if (at - old).abs() < 0.01 {
+            return Ok(old);
+        }
+        let floor = self.segs[..i].iter().rev().find(|s| s.kind != SegKind::Off).and_then(|s| s.to).unwrap_or(0.0);
+        if at < floor - 1e-6 {
+            return Err(format!("Davor liegt schon Arbeitszeit bis {}. Der Beginn muss danach liegen, oder ändere die Zeiten unter „Zeiten bearbeiten“.", hm(floor)));
+        }
+        if at < old {
+            // Verlängern: Lücken („Companion nicht aktiv“), die davor liegen, weichen
+            let first = self.segs[i].clone();
+            let mut out: Vec<Seg> = Vec::with_capacity(self.segs.len());
+            for (j, s) in self.segs.iter().enumerate() {
+                if j < i && s.kind == SegKind::Off {
+                    if s.from >= at - 1e-6 {
+                        continue;
+                    }
+                    let mut s = s.clone();
+                    if s.to.is_some_and(|t| t > at) {
+                        s.to = Some(at);
+                    }
+                    out.push(s);
+                } else if j == i {
+                    out.push(Seg { from: at, ..first.clone() });
+                } else {
+                    out.push(s.clone());
+                }
+            }
+            self.segs = out;
+        } else {
+            // Verkürzen: was vor dem neuen Beginn lag, entfällt; der Abschnitt darum beginnt später
+            let mut k = i;
+            while k < self.segs.len() && self.segs[k].to.is_some_and(|t| t <= at + 1e-6) {
+                k += 1;
+            }
+            self.segs.drain(i..k);
+            if let Some(g) = self.segs.get_mut(i) {
+                if g.from < at {
+                    g.from = at;
+                }
+            }
+        }
+        if i == 0 {
+            self.start = self.segs.first().map(|g| g.from).unwrap_or(self.start);
+        }
+        // Der Start steht in der Ereignisliste an der neuen Zeit
+        for e in self.events.iter_mut().filter(|e| (e.t - old).abs() < 1e-6 && matches!(e.k.as_str(), "start" | "boot")) {
+            e.t = at;
+        }
+        self.ev(now, "edit", format!("Beginn des laufenden Trackings von {} auf {} geändert", hm(old), hm(at)));
+        Ok(old)
+    }
+
+    /// Das Ende vorab festlegen: Das Tracking läuft weiter und endet zur Uhrzeit `at` (nach `now`, am selben Tag) von selbst.
+    /// Ein neuer Wert ersetzt den alten.
+    pub fn set_planned_end(&mut self, now: f64, at: f64) -> Result<(), String> {
+        if !self.tracking && self.stop != Some(Stop::Pause) {
+            return Err("Es läuft kein Tracking.".into());
+        }
+        if !at.is_finite() || at > 1440.0 {
+            return Err("Ungültige Uhrzeit.".into());
+        }
+        if at <= now + 1e-6 {
+            return Err("Das Ende liegt nicht in der Zukunft. Beende das Tracking jetzt oder wähle ein früheres Ende.".into());
+        }
+        self.planned_end = Some(at);
+        self.ev(now, "edit", format!("Ende vorab festgelegt: Das Tracking endet um {} Uhr von selbst", hm(at)));
+        Ok(())
+    }
+
+    /// Das vorab festgelegte Ende aufheben.
+    pub fn clear_planned_end(&mut self, now: f64) -> Result<(), String> {
+        let Some(at) = self.planned_end.take() else { return Err("Es ist kein Ende vorab festgelegt.".into()) };
+        self.ev(now, "edit", format!("Vorab festgelegtes Ende um {} Uhr aufgehoben · das Tracking läuft weiter", hm(at)));
+        Ok(())
+    }
+
+    /// Ist das vorab festgelegte Ende erreicht, endet das Tracking genau dann (auch wenn es erst später bemerkt wird).
+    /// Liefert `true`, wenn sich der Zustand geändert hat.
+    pub fn apply_planned_end(&mut self, now: f64) -> bool {
+        let Some(at) = self.planned_end else { return false };
+        if now + 1e-6 < at {
+            return false;
+        }
+        self.planned_end = None;
+        if self.tracking || self.stop == Some(Stop::Pause) {
+            if self.stop_web(now, at).is_ok() {
+                if let Some(e) = self.events.iter_mut().rev().find(|e| e.k == "stop") {
+                    e.txt = format!("Tracking zum vorab festgelegten Ende beendet · Arbeitsende {}", hm(self.ended.unwrap_or(at)));
+                }
+            }
+        } else if self.stop == Some(Stop::Shutdown) {
+            // Der Rechner war schon heruntergefahren: Es gibt nichts zu beenden, und das Tracking wird beim nächsten Start
+            // wie gewohnt fortgesetzt – das veraltete Ende darf es dann nicht gleich wieder stoppen.
+            self.ev(at, "edit", format!("Vorab festgelegtes Ende um {} Uhr entfällt: Der Rechner war schon heruntergefahren", hm(at)));
+        }
+        true
+    }
+
     /// Der Benutzer bestätigt, dass er über Nacht wirklich arbeitet.
     pub fn confirm_night(&mut self, now: f64) -> Result<(), String> {
         if !self.tracking || !self.carried { return Err("Es läuft kein Tracking über Mitternacht.".into()) }
@@ -329,6 +462,7 @@ impl DayState {
         self.stop = Some(Stop::Quit);
         self.declined = None;
         self.last_beat = Some(end);
+        self.planned_end = None;
         Ok(())
     }
 
@@ -348,6 +482,7 @@ impl DayState {
         }
         self.stop = Some(Stop::Quit);
         self.declined = None;
+        self.planned_end = None;
         Ok(())
     }
 
@@ -362,6 +497,9 @@ impl DayState {
     }
 
     fn end_session(&mut self, now: f64, kind: Stop, txt: &str) -> Result<(), &'static str> {
+        if kind == Stop::Quit {
+            self.planned_end = None;
+        }
         if self.tracking {
             self.close_open(now);
             self.tracking = false;
