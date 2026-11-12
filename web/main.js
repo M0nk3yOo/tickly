@@ -80,6 +80,15 @@ async function route() {
   if (r === 'admin' && isAdmin()) { try { await loadAdminTab(); } catch (e) { /* Liste bleibt leer */ } }
   if (r === 'settings' && S.setTab === 'sec') { try { S.mySessions = await api('GET', '/sessions'); } catch (e) { /* egal */ } }
   S.route = r; if (!window.__keepModal) S.modal = null; window.__keepModal = false; render(); window.scrollTo(0, 0);
+  // Link aus der Mail „Läuft dein Tracking noch?“: Beenden mit dem empfohlenen Ende vorbereiten (beendet nichts von selbst)
+  const q = new URLSearchParams(location.hash.split('?')[1] || ''), stopAt = r === 'dashboard' && S.ready ? q.get('stopat') : null;
+  if (stopAt != null) {
+    history.replaceState(null, '', '#/dashboard');
+    const at = Number(stopAt);
+    if (q.get('d') && q.get('d') !== TODAY) toast('Der Link gilt nur für den Tag der Nachricht');
+    else if (!S.day || !(S.day.tracking || S.day.stop === 'pause')) toast('Das Tracking ist schon beendet');
+    else if (Number.isFinite(at) && at >= 0 && at <= 1440) { S.modal = { type: 'stop', mode: 'custom', at: Math.min(at, Math.floor(S.now)), prev: null, err: '' }; renderModalOnly(); await H.stopPreview(); }
+  }
 }
 function go(r) { if (location.hash === '#/' + r) route(); else location.hash = '#/' + r; }
 

@@ -1,5 +1,5 @@
 use chrono::{DateTime, NaiveDate, Utc};
-use tickly_core::{DayState, Settings};
+use tickly_core::{Away, DayState, Settings};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -90,6 +90,9 @@ pub struct ServerState {
     pub night_check: Option<NightInfo>,
     /// Ein zweiter Companion hat das Tracking gestartet, während dieser lief (oder umgekehrt).
     pub device_clash: Option<ClashInfo>,
+    /// Offene Rückfrage nach einer längeren Sperre (Pause oder Arbeitszeit?). Kommt aus dem lokal geführten Tag.
+    #[serde(skip_deserializing)]
+    pub away: Option<Away>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]

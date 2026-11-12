@@ -45,6 +45,13 @@ pub struct Policy {
     pub ask: bool,
 }
 
+/// Ab so vielen Minuten Sperre fragt der Companion nach dem Entsperren: Pause oder Arbeitszeit (Termin)?
+pub const AWAY_ASK_MIN: f64 = 15.0;
+/// Bezeichnung einer Sperre, die als Arbeitszeit bestätigt wurde.
+pub const AWAY_WORK_APP: &str = "Termin";
+/// Ohne Lebenszeichen seit so vielen Minuten gilt der Rechner als nicht mehr aktiv.
+const STALE_BEAT_MIN: f64 = 5.0;
+
 fn hm(m: f64) -> String {
     let t = m.round() as i64;
     format!("{:02}:{:02}", t.div_euclid(60), t.rem_euclid(60))
@@ -65,7 +72,7 @@ impl Track {
 
 impl DayState {
     fn blank(now: f64) -> DayState {
-        DayState { start: now, tracking: false, ended: None, last_app: "other".into(), segs: vec![], events: vec![], stop: Some(Stop::Idle), declined: None, last_beat: None, edited: false, carried: false, night_ok: false, planned_end: None }
+        DayState { start: now, tracking: false, ended: None, last_app: "other".into(), segs: vec![], events: vec![], stop: Some(Stop::Idle), declined: None, last_beat: None, edited: false, carried: false, night_ok: false, planned_end: None, away: None }
     }
 
     /// Noch nichts erfasst: der Companion hat sich heute nicht gemeldet.
@@ -238,7 +245,53 @@ impl DayState {
         let app = self.last_app.clone();
         self.segs.push(Seg { from: now, to: None, kind: SegKind::App, app: Some(app), note: None });
         self.ev(now, "unlock", format!("Entsperrt ({} Min. gesperrt)", (now - from).round()));
+        // Längere Sperre: Pause oder Termin? Bis zur Antwort bleibt es eine Pause. Eine neue Rückfrage ersetzt die alte.
+        if now - from >= AWAY_ASK_MIN - 1e-6 {
+            self.away = Some(Away { from, to: now });
+        }
         Ok(())
+    }
+
+    /// Antwort auf „Pause oder Arbeitszeit?“ nach einer längeren Sperre: `pause` (bleibt Pause) oder `work`
+    /// (die gesperrte Zeit zählt als Arbeitszeit „Termin“).
+    pub fn answer_away(&mut self, now: f64, ans: &str) -> Result<(), &'static str> {
+        let Some(a) = self.away else { return Err("Es ist keine Rückfrage zur Sperre offen.") };
+        if ans != "pause" && ans != "work" {
+            return Err("Unbekannte Antwort.");
+        }
+        self.away = None;
+        let span = format!("{}–{}", hm(a.from), hm(a.to));
+        let Some(g) = self.segs.iter_mut().find(|g| g.kind == SegKind::Locked && (g.from - a.from).abs() < 1e-6) else {
+            // Inzwischen anders bearbeitet: nichts mehr zu ändern
+            self.ev(now, "ask", format!("Rückfrage zur Sperre {span} entfällt: Die Zeit wurde inzwischen bearbeitet"));
+            return Ok(());
+        };
+        if ans == "work" {
+            g.kind = SegKind::App;
+            g.app = Some(AWAY_WORK_APP.into());
+            g.note = None;
+            self.ev(now, "ask", format!("Rückfrage: Sperre {span} war Arbeitszeit (Termin) · wird als Arbeitszeit gezählt"));
+        } else {
+            self.ev(now, "ask", format!("Rückfrage: Sperre {span} war eine Pause"));
+        }
+        Ok(())
+    }
+
+    /// Letzte bekannte Aktivität am Rechner (Minuten seit Mitternacht), solange das Tracking läuft: der Beginn der laufenden
+    /// Sperre, sonst das letzte Lebenszeichen, wenn sich der Companion länger nicht gemeldet hat. `None`, wenn der Rechner
+    /// gerade benutzt wird oder nichts bekannt ist.
+    pub fn last_activity(&self, now: f64) -> Option<f64> {
+        if !self.tracking {
+            return None;
+        }
+        let start = self.run_start().or_else(|| self.segs.first().map(|g| g.from))?;
+        let last = self.segs.last()?;
+        let t = if last.kind == SegKind::Locked && last.to.is_none() {
+            Some(last.from)
+        } else {
+            self.last_beat.filter(|b| now - b > STALE_BEAT_MIN)
+        }?;
+        (t > start + 1e-6 && t < now).then_some(t)
     }
 
     /// Tracking im Companion anhalten; die App läuft weiter und der Tag gilt nicht als beendet.
@@ -594,7 +647,7 @@ pub fn events_from_segs(segs: &[Seg]) -> Vec<Event> {
 ///
 /// `day = None` heißt: heute gibt es noch keinen Tag; dann entsteht er je nach Zeitfenster (läuft, fragt oder bleibt aus).
 pub fn apply_event(day: &mut Option<DayState>, kind: &str, now: f64, os: &str, p: &Policy, app: Option<&str>, answer: Option<&str>) -> Result<(), String> {
-    const KINDS: [&str; 12] = ["boot", "newday", "beat", "lock", "unlock", "quit", "shutdown", "pause", "start", "answer", "tick", "end"];
+    const KINDS: [&str; 13] = ["boot", "newday", "beat", "lock", "unlock", "quit", "shutdown", "pause", "start", "answer", "tick", "end", "away"];
     if !KINDS.contains(&kind) && kind != "app" {
         return Err("Unbekanntes Ereignis".into());
     }
@@ -617,6 +670,7 @@ pub fn apply_event(day: &mut Option<DayState>, kind: &str, now: f64, os: &str, p
         "end" => d.end_tracking(now),
         "start" => d.start_tracking(now),
         "answer" => d.answer(now, answer.unwrap_or("")),
+        "away" => d.answer_away(now, answer.unwrap_or("")),
         "tick" => { d.auto_tick(now, p); Ok(()) }
         _ => d.switch_app(app.unwrap_or(""), now),
     };

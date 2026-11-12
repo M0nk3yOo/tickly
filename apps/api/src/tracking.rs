@@ -116,12 +116,25 @@ pub async fn tick_at(app: &Arc<App>, today: NaiveDate, now: f64) -> Result<usize
         if !alert_once(app, &uid, today, "long").await? { continue }
         sent += 1;
         let start = s.start.map(clock).unwrap_or_default();
-        crate::netsec::log_system(app, "tracking", true, &format!("Hinweis „Tracking läuft seit über {hours} Stunden“ für {}", u.email)).await;
-        crate::mail::spawn(app.clone(), vec![u.email.clone()], format!("Läuft dein Tracking noch? Seit {start} Uhr erfasst"), "Läuft dein Tracking noch?".into(),
-            vec![format!("Dein Tracking läuft noch: Arbeitsbeginn {start} Uhr, bisher {} Stunden Brutto ({} Stunden netto) heute.", hh(s.gross), hh(s.net)),
-                 "Hast du vergessen, es zu beenden? Du kannst es in Tickly jetzt beenden oder ein früheres Ende festlegen, zum Beispiel die Uhrzeit, zu der du wirklich aufgehört hast.".into(),
-                 "Läuft alles richtig weiter, musst du nichts tun. Diese Nachricht kommt höchstens einmal am Tag.".into()],
-            Some(("Tracking öffnen".into(), format!("{}/#/dashboard", app.cfg.public_url.as_str().trim_end_matches('/')))));
+        let base = app.cfg.public_url.as_str().trim_end_matches('/').to_string();
+        // Empfohlenes Ende: die letzte bekannte Aktivität am Rechner (Beginn der laufenden Sperre bzw. letztes Lebenszeichen)
+        let last = c.day.last_activity(now);
+        let mut text = vec![format!("Dein Tracking läuft noch: Arbeitsbeginn {start} Uhr, bisher {} Stunden Brutto ({} Stunden netto) heute.", hh(s.gross), hh(s.net))];
+        let button = match last {
+            Some(t) => {
+                let locked = c.day.segs.last().is_some_and(|g| g.kind == tickly_core::SegKind::Locked && g.to.is_none());
+                text.push(format!("{} Hast du da aufgehört? Dann beende das Tracking mit dem Ende {} Uhr – die Zeit danach zählt nicht.",
+                    if locked { format!("Dein Bildschirm ist seit {} Uhr gesperrt, das war die letzte Aktivität am Rechner.", clock(t)) } else { format!("Die letzte Aktivität am Rechner war um {} Uhr.", clock(t)) }, clock(t)));
+                ("Tracking um ".to_string() + &clock(t) + " Uhr beenden", format!("{base}/#/dashboard?stopat={}&d={today}", t.floor() as i64))
+            }
+            None => {
+                text.push("Hast du vergessen, es zu beenden? Du kannst es in Tickly jetzt beenden oder ein früheres Ende festlegen, zum Beispiel die Uhrzeit, zu der du wirklich aufgehört hast.".into());
+                ("Tracking öffnen".to_string(), format!("{base}/#/dashboard"))
+            }
+        };
+        text.push("Läuft alles richtig weiter, musst du nichts tun. Diese Nachricht kommt höchstens einmal am Tag.".into());
+        crate::netsec::log_system(app, "tracking", true, &format!("Hinweis „Tracking läuft seit über {hours} Stunden“ für {}{}", u.email, last.map(|t| format!(" · Ende-Empfehlung {}", clock(t))).unwrap_or_default())).await;
+        crate::mail::spawn(app.clone(), vec![u.email.clone()], format!("Läuft dein Tracking noch? Seit {start} Uhr erfasst"), "Läuft dein Tracking noch?".into(), text, Some(button));
     }
     Ok(sent)
 }

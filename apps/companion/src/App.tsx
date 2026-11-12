@@ -119,7 +119,7 @@ function Main({ s, set }: { s: UiState; set: (s: UiState) => void }) {
   const st = v?.state;
   const track = (st?.track || "") as Track;
   const running = track === "running" || track === "locked";
-  const act = async (k: "pause" | "resume" | "end" | "answer", val?: string) => set(await api.act(k, val));
+  const act = async (k: "pause" | "resume" | "end" | "answer" | "away", val?: string) => set(await api.act(k, val));
   const [err, setErr] = useState("");
   const change = async (f: () => Promise<UiState>) => {
     setErr("");
@@ -183,6 +183,18 @@ function Main({ s, set }: { s: UiState; set: (s: UiState) => void }) {
               <button className="btn primary grow" onClick={() => act("answer", "work")}>Ja, jetzt starten</button>
               {fresh && <button className="btn grow" onClick={() => act("answer", "boot")}>Ja, ab {st?.bootAt != null ? `${clock(st.bootAt)} Uhr` : "Rechnerstart"}</button>}
               <button className="btn" onClick={() => act("answer", "no")}>Nein</button>
+            </div>
+          </div>
+        )}
+        {st?.away && (
+          <div className="ask">
+            <h2>Pause oder Arbeitszeit?</h2>
+            <p>
+              Der Rechner war von {clock(st.away.from)} bis {clock(st.away.to)} Uhr gesperrt ({hm(st.away.to - st.away.from)} h). Warst du in der Pause oder in einem Termin?
+            </p>
+            <div className="row nowrap">
+              <button className="btn grow" onClick={() => act("away", "pause")}>Pause</button>
+              <button className="btn primary grow" onClick={() => act("away", "work")}>Arbeitszeit</button>
             </div>
           </div>
         )}

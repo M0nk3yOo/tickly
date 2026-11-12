@@ -643,3 +643,66 @@ fn night_check_is_quiet_after_confirmation_or_without_carry_over() {
     stopped.quit(150.0).unwrap();
     assert!(ask(&stopped).is_none(), "beendet");
 }
+
+#[test]
+fn long_lock_asks_pause_or_work() {
+    let mut day = web_day();
+    // kurze Sperre: keine Rückfrage
+    day.lock(600.0).unwrap();
+    day.unlock(610.0).unwrap();
+    assert_eq!(day.away, None);
+    // lange Sperre: Rückfrage, bis dahin Pause
+    day.lock(720.0).unwrap();
+    day.unlock(765.0).unwrap();
+    assert_eq!(day.away, Some(Away { from: 720.0, to: 765.0 }));
+    let fx = Fixture::new();
+    let before = fx.with_day(&day, 800.0, |c| day_stat(c, c.today));
+    // Pause: bleibt gesperrt, die Rückfrage ist erledigt
+    let mut p = day.clone();
+    p.answer_away(800.0, "pause").unwrap();
+    assert_eq!(p.away, None);
+    assert!(p.segs.iter().any(|g| g.kind == SegKind::Locked && g.from == 720.0));
+    assert_eq!(fx.with_day(&p, 800.0, |c| day_stat(c, c.today)).counted, before.counted);
+    // Arbeitszeit: die Sperre wird zum Termin und zählt
+    let mut w = day.clone();
+    w.answer_away(800.0, "work").unwrap();
+    let g = w.segs.iter().find(|g| g.from == 720.0).unwrap();
+    assert_eq!((g.kind, g.app.as_deref()), (SegKind::App, Some(crate::AWAY_WORK_APP)));
+    let after = fx.with_day(&w, 800.0, |c| day_stat(c, c.today));
+    assert!(after.locked_break == 0.0 && after.gross == before.gross);
+    assert!(after.counted >= before.counted);
+    // ohne offene Rückfrage oder mit unbekannter Antwort: Fehler
+    assert!(w.answer_away(810.0, "work").is_err());
+    let mut x = day.clone();
+    assert!(x.answer_away(800.0, "egal").is_err());
+    assert!(x.away.is_some());
+}
+
+#[test]
+fn away_answer_goes_through_apply_event() {
+    let mut d = Some(web_day());
+    let p = crate::Policy { auto_from: None, ask: false };
+    crate::apply_event(&mut d, "lock", 720.0, "Windows", &p, None, None).unwrap();
+    crate::apply_event(&mut d, "unlock", 780.0, "Windows", &p, None, None).unwrap();
+    assert!(d.as_ref().unwrap().away.is_some());
+    crate::apply_event(&mut d, "away", 781.0, "Windows", &p, None, Some("work")).unwrap();
+    let d = d.unwrap();
+    assert!(d.away.is_none() && d.segs.iter().all(|g| g.kind != SegKind::Locked));
+}
+
+#[test]
+fn last_activity_is_lock_start_or_stale_beat() {
+    let mut day = web_day();
+    day.last_beat = Some(1000.0);
+    // Rechner wird gerade benutzt: keine Empfehlung
+    assert_eq!(day.last_activity(1002.0), None);
+    // Companion meldet sich seit Langem nicht mehr: letztes Lebenszeichen
+    assert_eq!(day.last_activity(1200.0), Some(1000.0));
+    // laufende Sperre: ihr Beginn
+    day.lock(1050.0).unwrap();
+    day.last_beat = Some(1199.0);
+    assert_eq!(day.last_activity(1200.0), Some(1050.0));
+    // beendet: nichts zu empfehlen
+    day.stop_web(1200.0, 1050.0).unwrap();
+    assert_eq!(day.last_activity(1200.0), None);
+}

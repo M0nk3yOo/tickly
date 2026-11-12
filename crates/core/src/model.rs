@@ -241,6 +241,16 @@ pub struct DayState {
     /// Vorab festgelegtes Ende (Minuten seit Mitternacht): zu dieser Zeit beendet der Server das Tracking von selbst.
     #[serde(default)]
     pub planned_end: Option<f64>,
+    /// Offene Rückfrage nach einer längeren Sperre: Pause oder Arbeitszeit (z. B. ein Termin)?
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub away: Option<Away>,
+}
+
+/// Eine längere Sperre, zu der der Companion nachfragt (Minuten seit Mitternacht).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Away {
+    pub from: f64,
+    pub to: f64,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

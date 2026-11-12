@@ -2015,6 +2015,17 @@ async fn long_tracking_mail_and_midnight_carry_over() {
     assert!(m.contains("12:00 Stunden Brutto"), "{}", &m[..m.len().min(1200)]);
     // Das Logo ist als eingebettetes Bild dabei (multipart/related, Content-ID tickly-logo, PNG) und im HTML verlinkt
     assert!(m.contains("multipart/related") && m.contains("Content-ID: <tickly-logo>") && m.contains("image/png") && m.contains("cid:tickly-logo"), "{}", &m[..m.len().min(2500)]);
+    // Bildschirm seit 17:30 gesperrt: Empfehlung, das Tracking mit Ende 17:30 zu beenden (Link bereitet das Beenden vor)
+    sqlx::query("DELETE FROM track_alerts").execute(&app.pool).await.unwrap();
+    let mut locked = tickly_core::DayState::empty(480.0);
+    locked.web_start(480.0).unwrap();
+    locked.lock(1050.0).unwrap();
+    locked.last_beat = Some(1199.0);
+    { let mut conn = app.pool.acquire().await.unwrap(); db::put_day(&mut conn, &uid, today, &locked).await.map_err(|e| e.1).unwrap(); }
+    assert_eq!(tickly_api::tracking::tick_at(&app, today, 20.0 * 60.0).await.unwrap(), 1);
+    let mails = wait_mails(&inbox, 2).await;
+    let m = &mails[1];
+    assert!(m.contains("seit 17:30 Uhr gesperrt") && m.contains("Tracking um 17:30 Uhr beenden") && m.contains(&format!("#/dashboard?stopat=1050&d={today}")), "{}", &m[..m.len().min(2500)]);
     // Schwelle 0 = aus
     let mut reg = c.get("/api/snapshot").await.1["reg"].clone();
     reg["longTrackHours"] = json!(0);
@@ -2495,4 +2506,34 @@ async fn the_user_can_set_the_start_date_of_time_tracking() {
     let mut d = Client::new().await;
     d.login_andre().await;
     assert_eq!(d.post("/api/me/track-start", json!({"date": "2026-02-02"})).await.0, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn the_companion_asks_pause_or_work_after_a_long_lock() {
+    let mut c = Client::real().await;
+    assert_eq!(c.login("chef@example.de", "Sehr-Langes-Passwort-42").await, StatusCode::OK);
+    let code = c.post("/api/devices/pair-code", json!({})).await.1["code"].as_str().unwrap().to_string();
+    let mut dev = c.fresh();
+    dev.cookie = None;
+    let token = dev.post("/api/device/pair", json!({"code": code, "name": "Büro-PC", "os": "macos", "version": "1.0.0"})).await.1["token"].as_str().unwrap().to_string();
+    let app = c.app.clone();
+    let (today, _) = app.clock(None);
+    let uid = c.get("/api/session").await.1["me"]["id"].as_str().unwrap().to_string();
+    // Tag mit einer längeren Sperre (00:01–00:20), Rückfrage offen
+    let mut day = tickly_core::DayState::empty(0.0);
+    day.web_start(0.0).unwrap();
+    day.lock(1.0).unwrap();
+    day.unlock(20.0).unwrap();
+    assert!(day.away.is_some());
+    { let mut conn = app.pool.acquire().await.unwrap(); db::put_day(&mut conn, &uid, today, &day).await.map_err(|e| e.1).unwrap(); }
+    let at = chrono::Utc::now().to_rfc3339();
+    let (_, r) = dev.call_h(Method::POST, "/api/device/events", Some(json!({"events": [{"seq": 1, "kind": "away", "at": at, "answer": "work"}]})), Some(&token)).await;
+    assert_eq!(r["results"][0]["ok"], true, "{r}");
+    let d = &r["state"]["day"];
+    assert!(d.get("away").is_none(), "{d}");
+    let seg = d["segs"].as_array().unwrap().iter().find(|g| g["from"] == json!(1.0)).unwrap().clone();
+    assert_eq!((seg["kind"].clone(), seg["app"].clone()), (json!("app"), json!("Termin")));
+    // Nochmal antworten: keine Rückfrage mehr offen
+    let (_, r) = dev.call_h(Method::POST, "/api/device/events", Some(json!({"events": [{"seq": 2, "kind": "away", "at": at, "answer": "pause"}]})), Some(&token)).await;
+    assert_eq!(r["results"][0]["ok"], false, "{r}");
 }

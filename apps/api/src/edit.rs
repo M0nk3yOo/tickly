@@ -16,7 +16,7 @@ use std::sync::Arc;
 use tickly_core::{calc_segs, DayState, Event, Seg, SegKind, Stop};
 
 pub const MANUAL_APP: &str = "Manuell";
-const MAX_SEGS: usize = 500;
+const MAX_SEGS: usize = 5000;
 
 pub fn routes() -> Router<Arc<App>> {
     Router::new().route("/days/{date}", put(put_day))
@@ -99,6 +99,8 @@ async fn put_day(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientIp
     });
     day.segs = segs;
     day.edited = true;
+    // Eine offene Rückfrage zu einer Sperre bezieht sich auf die alten Zeiten
+    day.away = None;
     day.start = day.segs.first().map(|g| g.from).unwrap_or(day.start);
     if !day.tracking && day.ended.is_none() { day.ended = Some(last_end); }
     day.events.push(Event { t: if date == today { now } else { last_end }, k: "edit".into(), txt: format!("Zeiten nachträglich bearbeitet ({n} Abschnitte, Arbeitszeit {} → {} h)", hm(before), hm(after)) });

@@ -31,7 +31,7 @@
 ### Nur im Web erfassen (ohne Companion)
 
 Du brauchst den Companion nicht. Auf der Übersicht startest du mit **Tracking starten** und beendest mit **Tracking beenden**. Der Hinweis „Tracking beendet“ bleibt zwischendurch stehen, er ist dann nur eine Information. Beachte: Ohne Companion weiß Tickly nicht, ob du am Rechner bist. Das Tracking läuft, bis du es beendest (über Mitternacht läuft es weiter). Deshalb:
-- Läuft das Tracking **länger als 10 Stunden** (Brutto), erscheint ein Hinweis auf der Übersicht und du bekommst eine **Mail** („Läuft dein Tracking noch?“), höchstens einmal am Tag. Der Administrator kann die Grenze ändern oder abschalten.
+- Läuft das Tracking **länger als 10 Stunden** (Brutto), erscheint ein Hinweis auf der Übersicht und du bekommst eine **Mail** („Läuft dein Tracking noch?“), höchstens einmal am Tag. Ist der Bildschirm gerade gesperrt (oder meldet sich der Companion nicht mehr), schlägt die Mail ein Ende vor: die **letzte bekannte Aktivität am Rechner**. Der Knopf *Tracking um … Uhr beenden* öffnet das Beenden mit dieser Uhrzeit und Vorschau; beendet wird erst, wenn du bestätigst. Der Administrator kann die Grenze ändern oder abschalten.
 
 ### Läuft das Tracking über Nacht?
 

@@ -29,6 +29,8 @@ pub enum Action {
     Resume,
     /// „work“, „boot“ (ab Rechnerstart) oder „no“
     Answer(String),
+    /// Nach einer längeren Sperre: „pause“ oder „work“ (Termin, zählt als Arbeitszeit)
+    Away(String),
 }
 
 /// Was die Oberfläche anzeigt.
@@ -157,6 +159,7 @@ impl<T: Transport> Engine<T> {
             st.soll = soll;
             st.diff = k.counted - soll;
             st.window_active = self.policy(st.day_off, date, now).auto_from.is_some();
+            st.away = if self.date == Some(date) { d.away } else { None };
         } else {
             st.track = "stopped".into();
         }
@@ -276,6 +279,7 @@ impl<T: Transport> Engine<T> {
             Action::End => self.emit("end", now, None, None),
             Action::Resume => self.emit("start", now, None, None),
             Action::Answer(v) => self.emit("answer", now, None, Some(v)),
+            Action::Away(v) => self.emit("away", now, None, Some(v)),
         };
         self.last_app_sent = None;
         self.flush(now, true);
@@ -547,6 +551,33 @@ mod tests {
         e.tick(t(2 + 2400));
         let got: Vec<_> = w.lock().unwrap().received.iter().filter(|e| e.kind == "lock" || e.kind == "unlock").map(|e| (e.kind.clone(), e.at)).collect();
         assert_eq!(got, vec![("lock".to_string(), t(2)), ("unlock".to_string(), t(2402))]);
+    }
+
+    #[test]
+    fn after_a_long_lock_the_companion_asks_pause_or_work() {
+        let (mut e, w) = setup();
+        e.start(t(0), false);
+        e.tick(t(2));
+        // kurz gesperrt: keine Rückfrage
+        w.lock().unwrap().locked = true;
+        e.tick(t(4));
+        w.lock().unwrap().locked = false;
+        e.tick(t(64));
+        assert_eq!(e.view().state.away, None);
+        // 40 Minuten gesperrt: Rückfrage, auch ohne Verbindung
+        w.lock().unwrap().locked = true;
+        e.tick(t(100));
+        w.lock().unwrap().online = false;
+        w.lock().unwrap().locked = false;
+        e.tick(t(100 + 2400));
+        let a = e.view().state.away.expect("Rückfrage");
+        assert!((a.to - a.from - 40.0).abs() < 1e-6);
+        e.action(t(100 + 2410), Action::Away("work".into()));
+        assert_eq!(e.view().state.away, None);
+        w.lock().unwrap().online = true;
+        e.tick(t(100 + 2420));
+        let got = w.lock().unwrap().received.iter().filter(|x| x.kind == "away").map(|x| x.answer.clone()).collect::<Vec<_>>();
+        assert_eq!(got, vec![Some("work".to_string())]);
     }
 
     #[test]

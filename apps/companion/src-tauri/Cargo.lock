@@ -4215,7 +4215,7 @@ dependencies = [
 
 [[package]]
 name = "tickly-agent"
-version = "0.9.16"
+version = "0.9.17"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -4228,7 +4228,7 @@ dependencies = [
 
 [[package]]
 name = "tickly-companion"
-version = "0.9.16"
+version = "0.9.17"
 dependencies = [
  "chrono",
  "keyring",
@@ -4246,7 +4246,7 @@ dependencies = [
 
 [[package]]
 name = "tickly-core"
-version = "0.9.16"
+version = "0.9.17"
 dependencies = [
  "chrono",
  "serde",
@@ -4254,7 +4254,7 @@ dependencies = [
 
 [[package]]
 name = "tickly-platform"
-version = "0.9.16"
+version = "0.9.17"
 dependencies = [
  "block2",
  "core-foundation",

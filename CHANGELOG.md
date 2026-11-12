@@ -1,5 +1,13 @@
 # Änderungen
 
+## 0.9.17
+
+Aktualisierung von 0.9.16: Server und Companion ändern sich (keine Datenbankänderung). Die Rückfrage nach einer längeren Sperre braucht den neuen Companion; ältere Companions laufen unverändert weiter.
+
+- **Pause oder Arbeitszeit?** War der Rechner mindestens 15 Minuten gesperrt (oder im Ruhezustand), fragt der Companion nach dem Entsperren, ob das eine Pause oder Arbeitszeit war (z. B. ein Termin ohne Rechner). Er bringt dazu sein Fenster nach vorn und zeigt eine Mitteilung. *Pause* lässt die Zeit als Pause stehen, *Arbeitszeit* zählt sie als Eintrag „Termin“. Bis zur Antwort bleibt es eine Pause. Die Antwort funktioniert auch offline und steht in den Ereignissen.
+- **Ende-Empfehlung in der Mail „Läuft dein Tracking noch?“.** Die Mail nennt die letzte bekannte Aktivität am Rechner, also den Beginn der laufenden Sperre oder, wenn sich der Companion nicht mehr meldet, sein letztes Lebenszeichen. Der Knopf *Tracking um … Uhr beenden* öffnet in Tickly das Beenden mit genau diesem Ende samt Vorschau. Beendet wird erst, wenn du bestätigst. Wird der Rechner gerade benutzt, bleibt es beim bisherigen Text.
+- **Mehr Einträge pro Tag.** Unter *Zeiten bearbeiten* lassen sich Tage mit bis zu 5000 Abschnitten speichern (bisher 500). An Tagen mit vielen Programmwechseln schlug das Speichern sonst mit „Zu viele Abschnitte an einem Tag“ fehl.
+
 ## 0.9.16
 
 Aktualisierung von 0.9.15: Es ändert sich nur der Server mit der Weboberfläche (keine Datenbankänderung); der Companion braucht kein Update.

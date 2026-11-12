@@ -28,6 +28,8 @@ struct Shared {
     quitting: Mutex<bool>,
     last_emit: Mutex<String>,
     asked: Mutex<bool>,
+    /// Beginn der Sperre, zu der zuletzt nachgefragt wurde
+    away_asked: Mutex<Option<f64>>,
     /// Startet der Companion mit dem Rechner? Das Betriebssystem ist maßgeblich, hier steht der zuletzt gelesene Stand.
     autostart: AtomicBool,
 }
@@ -148,6 +150,23 @@ fn refresh_ui(app: &AppHandle, tray: &Tray) {
     } else {
         *asked = false;
     }
+    // Nach einer längeren Sperre: Pause oder Arbeitszeit? (einmal je Sperre)
+    let away = st.view.as_ref().and_then(|v| v.state.away);
+    let mut told = sh.away_asked.lock().unwrap();
+    if let Some(a) = away {
+        if *told != Some(a.from) {
+            *told = Some(a.from);
+            show_window(app);
+            let _ = app.notification().builder().title("Tickly").body(format!("Du warst {} Min. weg ({}–{} Uhr). Pause oder Arbeitszeit?", (a.to - a.from).round(), clock(a.from), clock(a.to))).show();
+        }
+    } else {
+        *told = None;
+    }
+}
+
+fn clock(m: f64) -> String {
+    let t = m.round() as i64;
+    format!("{:02}:{:02}", t.div_euclid(60), t.rem_euclid(60))
 }
 
 fn show_window(app: &AppHandle) {
@@ -194,6 +213,7 @@ fn act(sh: tauri::State<Arc<Shared>>, kind: String, value: Option<String>) -> Re
         "end" => Action::End,
         "resume" => Action::Resume,
         "answer" => Action::Answer(value.unwrap_or_default()),
+        "away" => Action::Away(value.unwrap_or_default()),
         _ => return Err("Unbekannte Aktion".into()),
     };
     if let Some(e) = sh.engine.lock().unwrap().as_mut() {
@@ -282,6 +302,7 @@ fn main() {
                 quitting: Mutex::new(false),
                 last_emit: Mutex::new(String::new()),
                 asked: Mutex::new(false),
+                away_asked: Mutex::new(None),
                 autostart: AtomicBool::new(app.autolaunch().is_enabled().unwrap_or(false)),
             });
             app.manage(shared.clone());
