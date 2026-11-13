@@ -1952,8 +1952,14 @@ async fn a_planned_end_is_applied_by_the_background_check_in_real_operation() {
     if at <= now + 1e-6 { return }
     assert_eq!(c.post("/api/companion", json!({"kind": "planend", "until": at})).await.0, StatusCode::OK);
     assert_eq!(tickly_api::tracking::apply_planned_ends(&c.app).await.unwrap(), 0, "noch nicht erreicht");
-    tokio::time::sleep(std::time::Duration::from_millis(2600)).await;
-    assert_eq!(tickly_api::tracking::apply_planned_ends(&c.app).await.unwrap(), 1);
+    // Unter Last kann es etwas dauern: bis zu 6 Sekunden abfragen, angewendet wird genau einmal
+    let mut applied = 0;
+    for _ in 0..60 {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        applied += tickly_api::tracking::apply_planned_ends(&c.app).await.unwrap();
+        if applied > 0 { break }
+    }
+    assert_eq!(applied, 1);
     let t = c.get("/api/today").await.1;
     assert_eq!((t["day"]["tracking"].clone(), t["day"]["plannedEnd"].is_null()), (json!(false), true), "{t}");
     assert!((t["day"]["ended"].as_f64().unwrap() - at).abs() < 1e-6, "{t}");
@@ -2390,9 +2396,12 @@ async fn the_companion_can_end_the_tracking_without_quitting() {
     let mut dev = c.fresh();
     dev.cookie = None;
     let token = dev.post("/api/device/pair", json!({"code": code, "name": "Büro-PC", "os": "macos", "version": "1.0.0"})).await.1["token"].as_str().unwrap().to_string();
+    // Ohne Auto-Start fragt der Rechnerstart nach, unabhängig von der Uhrzeit (sonst startet es im Zeitfenster 06–10 Uhr von selbst)
+    let (st, _) = dev.call_h(Method::POST, "/api/device/prefs", Some(json!({"autoTrack": false})), Some(&token)).await;
+    assert_eq!(st, StatusCode::OK);
     let at = chrono::Utc::now().to_rfc3339();
     let ev = |seq: i64, kind: &str, extra: Value| { let mut v = json!({"seq": seq, "kind": kind, "at": at, "os": "macos"}); v.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone()); json!({"events": [v]}) };
-    let mut send = |seq: i64, kind: &str, extra: Value| { let b = ev(seq, kind, extra); let t = token.clone(); let mut d = dev.fresh(); d.cookie = None; async move { d.call_h(Method::POST, "/api/device/events", Some(b), Some(&t)).await.1 } };
+    let send = |seq: i64, kind: &str, extra: Value| { let b = ev(seq, kind, extra); let t = token.clone(); let mut d = dev.fresh(); d.cookie = None; async move { d.call_h(Method::POST, "/api/device/events", Some(b), Some(&t)).await.1 } };
 
     let r = send(1, "boot", json!({})).await;
     assert_eq!(r["state"]["track"], "asking", "{r}");
