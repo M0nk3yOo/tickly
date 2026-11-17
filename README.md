@@ -6,7 +6,7 @@ Eine kleine App auf Windows und macOS erkennt Arbeitsbeginn, Sperre, Pausen und 
 
 <p align="center"><img src="docs/screenshots/02-uebersicht.png" alt="Übersicht" width="860"></p>
 
-> **Stand: Version 0.9.17.** Server, Weboberfläche und macOS-Companion sind getestet.
+> **Stand: Version 0.9.18.** Server, Weboberfläche und macOS-Companion sind getestet.
 > Der **Windows-Teil der Companion-App ist geschrieben und wird in der CI übersetzt, wurde aber noch nicht auf einem echten Windows-Rechner ausgeführt**. Mehr unter [Bekannte Grenzen](#bekannte-grenzen).
 
 ## Was Tickly kann

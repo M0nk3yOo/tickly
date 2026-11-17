@@ -90,7 +90,7 @@ Urlaub, Krankheit, Zeitausgleich im Kalender eintragen. Wochenenden und Feiertag
 ## Einstellungen
 
 - **Arbeitszeit:** Tagessoll je Wochentag (mit Vorlagen), Brutto/Netto.
-- **Zeiterfassung:** automatische Pausenregeln (z. B. ab 6 h 30 Min.), gesperrte Zeit als Pause werten, Mindestdauer.
+- **Zeiterfassung:** automatische Pausenregeln (z. B. ab 6 h 30 Min.), gesperrte Zeit als Pause werten, Mindestdauer, **Rüstzeit** (Zusatzzeit nach dem Rechnerstart und beim Herunterfahren, je 0–120 Minuten; zählt zur Arbeitszeit, steht in den Ereignissen). Ein **Neustart** unter der Mindestdauer einer Sperre läuft ohne Rüstzeit durch, die Unterbrechung zählt als Arbeitszeit.
 - **Feiertage:** Bundesland und **weitere freie Tage** (Rosenmontag, Heiligabend, Silvester, eigene).
 - **Tracking & Datenschutz:** automatischer Start nach **Zeitfenstern**, Rückfrage außerhalb, App-Erfassung, ausgeschlossene Apps, Export. Ob der Companion **mit dem Rechner startet**, stellst du im Companion selbst ein, ob das Tracking auf einem Gerät **von selbst startet**, im Companion oder unter *Companion-App* beim Gerät.
 - **Profil:** Name, E-Mail, **Darstellung** (System/Hell/Dunkel). Eine **neue E-Mail-Adresse** gilt erst, wenn du den Link in der Mail öffnest, die Tickly an die *neue* Adresse schickt (24 Stunden gültig). Bis dahin meldest du dich mit der bisherigen an. Die bisherige Adresse bekommt danach eine Info-Mail. Zurücknehmen: bisherige Adresse eintragen und speichern. Das braucht einen eingerichteten SMTP-Server.

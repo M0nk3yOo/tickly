@@ -203,7 +203,7 @@ fn settings_and_stats_roundtrip_json() {
 }
 
 fn pol(auto: Option<f64>, ask: bool) -> crate::Policy {
-    crate::Policy { auto_from: auto, ask }
+    crate::Policy { auto_from: auto, ask, ..Default::default() }
 }
 
 #[test]
@@ -681,7 +681,7 @@ fn long_lock_asks_pause_or_work() {
 #[test]
 fn away_answer_goes_through_apply_event() {
     let mut d = Some(web_day());
-    let p = crate::Policy { auto_from: None, ask: false };
+    let p = crate::Policy::default();
     crate::apply_event(&mut d, "lock", 720.0, "Windows", &p, None, None).unwrap();
     crate::apply_event(&mut d, "unlock", 780.0, "Windows", &p, None, None).unwrap();
     assert!(d.as_ref().unwrap().away.is_some());
@@ -705,4 +705,86 @@ fn last_activity_is_lock_start_or_stale_beat() {
     // beendet: nichts zu empfehlen
     day.stop_web(1200.0, 1050.0).unwrap();
     assert_eq!(day.last_activity(1200.0), None);
+}
+
+/// Rüstzeit: das erste Tracking nach dem Rechnerstart beginnt früher, beim Herunterfahren endet die Arbeitszeit später.
+#[test]
+fn setup_time_extends_start_after_boot_and_end_at_shutdown() {
+    let p = crate::Policy { auto_from: Some(360.0), ask: false, lead: 5.0, tail: 10.0, join: 0.0 };
+    // Rechnerstart 08:00 im Zeitfenster: Tracking beginnt 07:55
+    let mut day = Some(DayState::new_day(480.0, "Windows", &p));
+    let d = day.as_ref().unwrap();
+    assert_eq!(d.segs[0].from, 475.0);
+    assert!(d.events[0].txt.contains("inkl. 5 Min. Rüstzeit"), "{}", d.events[0].txt);
+    // Herunterfahren 12:00: die Arbeitszeit endet 12:10
+    crate::apply_event(&mut day, "shutdown", 720.0, "Windows", &p, None, None).unwrap();
+    let d = day.as_ref().unwrap();
+    assert_eq!((d.ended, d.segs.last().unwrap().to), (Some(730.0), Some(730.0)));
+    assert!(d.events.last().unwrap().txt.contains("10 Min. Rüstzeit"), "{}", d.events.last().unwrap().txt);
+    // Start 13:00 nach dem Herunterfahren: ab 12:55, die Lücke davor zählt nicht
+    crate::apply_event(&mut day, "boot", 780.0, "Windows", &p, None, None).unwrap();
+    let d = day.as_ref().unwrap();
+    let segs = &d.segs;
+    assert_eq!((segs[1].kind, segs[1].from, segs[1].to), (SegKind::Off, 730.0, Some(775.0)));
+    assert_eq!((segs[2].kind, segs[2].from), (SegKind::App, 775.0));
+    // Start kurz nach dem Herunterfahren: nichts überlappt
+    let mut day2 = Some(DayState::new_day(480.0, "Windows", &p));
+    crate::apply_event(&mut day2, "shutdown", 720.0, "Windows", &p, None, None).unwrap();
+    crate::apply_event(&mut day2, "boot", 724.0, "Windows", &p, None, None).unwrap();
+    let s = &day2.as_ref().unwrap().segs;
+    assert!(s.windows(2).all(|w| w[0].to.unwrap_or(f64::MAX) <= w[1].from + 1e-9), "{s:?}");
+    // Ohne Rüstzeit (0) bleibt alles wie bisher
+    let z = crate::Policy { auto_from: Some(360.0), ask: false, lead: 0.0, tail: 0.0, join: 0.0 };
+    let mut day3 = Some(DayState::new_day(480.0, "Windows", &z));
+    crate::apply_event(&mut day3, "shutdown", 720.0, "Windows", &z, None, None).unwrap();
+    assert_eq!((day3.as_ref().unwrap().segs[0].from, day3.as_ref().unwrap().ended), (480.0, Some(720.0)));
+    // Am Tagesanfang nicht vor 00:00
+    let early = DayState::new_day(2.0, "Windows", &p);
+    assert_eq!(early.segs[0].from, 0.0);
+}
+
+#[test]
+fn the_reporting_os_is_remembered_per_day() {
+    let p = crate::Policy::default();
+    let mut day = Some(DayState::boot(480.0, "Windows"));
+    crate::apply_event(&mut day, "beat", 481.0, "Windows", &p, None, None).unwrap();
+    assert_eq!(day.as_ref().unwrap().os.as_deref(), Some("Windows"));
+    crate::apply_event(&mut day, "beat", 485.0, "macOS", &p, None, None).unwrap();
+    crate::apply_event(&mut day, "pause", 486.0, "macOS", &p, None, None).unwrap();
+    assert_eq!(day.as_ref().unwrap().os.as_deref(), Some("macOS"));
+}
+
+/// Neustart: die kurze Unterbrechung zählt als Arbeitszeit, ohne Rüstzeit; ein längeres Herunterfahren bekommt sie.
+#[test]
+fn a_restart_counts_as_work_without_setup_time() {
+    let p = crate::Policy { auto_from: Some(360.0), ask: false, lead: 5.0, tail: 10.0, join: 15.0 };
+    // 08:00 Start (Rüstzeit 5 → 07:55), 12:00 herunterfahren, 12:04 wieder gestartet
+    let mut day = Some(DayState::new_day(480.0, "Windows", &p));
+    crate::apply_event(&mut day, "shutdown", 720.0, "Windows", &p, None, None).unwrap();
+    assert_eq!(day.as_ref().unwrap().segs.last().unwrap().to, Some(730.0));
+    crate::apply_event(&mut day, "boot", 724.0, "Windows", &p, None, None).unwrap();
+    let d = day.as_ref().unwrap();
+    assert!(d.tracking && d.shutdown_at.is_none());
+    // durchgehend: kein Off-Abschnitt, nichts überlappt, die Lücke ist Arbeitszeit, keine Rüstzeit am Neustart
+    assert!(d.segs.iter().all(|g| g.kind != SegKind::Off), "{:?}", d.segs);
+    assert!(d.segs.windows(2).all(|w| (w[0].to.unwrap() - w[1].from).abs() < 1e-9), "{:?}", d.segs);
+    assert_eq!(d.segs[0].from, 475.0);
+    assert!(d.events.iter().any(|e| e.txt.contains("Neustart nach 4 Min.")));
+    assert!(d.events.iter().find(|e| e.k == "shutdown").unwrap().txt.ends_with("fortgesetzt"), "{:?}", d.events);
+    let fx = Fixture::new();
+    let gross = |dd: &DayState| fx.with_day(dd, 800.0, |c| day_stat(c, c.today)).gross;
+    assert!((gross(d) - (800.0 - 475.0)).abs() < 1e-6, "{}", gross(d));
+    // 20 Minuten aus: kein Neustart mehr – Lücke zählt nicht, Rüstzeit am Ende und am Start
+    let mut day = Some(DayState::new_day(480.0, "Windows", &p));
+    crate::apply_event(&mut day, "shutdown", 720.0, "Windows", &p, None, None).unwrap();
+    crate::apply_event(&mut day, "boot", 740.0, "Windows", &p, None, None).unwrap();
+    let g = &day.as_ref().unwrap().segs;
+    assert_eq!((g[1].kind, g[1].from, g[1].to), (SegKind::Off, 730.0, Some(735.0)));
+    assert_eq!((g[2].kind, g[2].from), (SegKind::App, 735.0));
+    // join = 0: wie bisher (Lücke zählt nicht)
+    let z = crate::Policy { join: 0.0, ..p };
+    let mut day = Some(DayState::new_day(480.0, "Windows", &z));
+    crate::apply_event(&mut day, "shutdown", 720.0, "Windows", &z, None, None).unwrap();
+    crate::apply_event(&mut day, "boot", 724.0, "Windows", &z, None, None).unwrap();
+    assert!(day.as_ref().unwrap().segs.iter().any(|g| g.kind == SegKind::Off));
 }

@@ -49,6 +49,12 @@ pub struct Settings {
     /// Darstellung: "system" (folgt dem Betriebssystem), "light" oder "dark".
     #[serde(default = "default_theme")]
     pub theme: String,
+    /// Rüstzeit nach dem Rechnerstart (Minuten): das erste Tracking nach dem Start beginnt so viel früher.
+    #[serde(default)]
+    pub setup_before: f64,
+    /// Rüstzeit beim Herunterfahren (Minuten): die Arbeitszeit endet so viel später als das Herunterfahren.
+    #[serde(default)]
+    pub setup_after: f64,
 }
 
 fn default_theme() -> String {
@@ -122,6 +128,8 @@ impl Default for Settings {
             auto_track: AutoTrack::default(),
             extra_days: ExtraDays::default(),
             theme: default_theme(),
+            setup_before: 0.0,
+            setup_after: 0.0,
         }
     }
 }
@@ -244,6 +252,12 @@ pub struct DayState {
     /// Offene Rückfrage nach einer längeren Sperre: Pause oder Arbeitszeit (z. B. ein Termin)?
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub away: Option<Away>,
+    /// Betriebssystem des Rechners, der zuletzt gemeldet hat („macOS“ oder „Windows“).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub os: Option<String>,
+    /// Zeitpunkt des Herunterfahrens (Minuten), solange auf den nächsten Start gewartet wird: daran erkennt der Start einen Neustart.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shutdown_at: Option<f64>,
 }
 
 /// Eine längere Sperre, zu der der Companion nachfragt (Minuten seit Mitternacht).

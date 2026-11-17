@@ -277,13 +277,17 @@ pub fn forecast_end(c: &Ctx, st: &DayStat) -> Option<f64> {
 
 /// Wie der Companion beim Start bzw. in der laufenden Prüfung entscheidet (Zeitfenster, Feiertage, Urlaub).
 pub fn track_policy(s: &Settings, absences: &[Absence], date: NaiveDate, now: f64) -> Policy {
-    policy_for(&s.auto_track, day_info(date, s, absences).off, date, now)
+    let mut p = policy_for(&s.auto_track, day_info(date, s, absences).off, date, now);
+    p.lead = s.setup_before.clamp(0.0, 120.0);
+    p.tail = s.setup_after.clamp(0.0, 120.0);
+    p.join = if s.lock_as_break { s.chunk.clamp(0.0, 240.0) } else { 0.0 };
+    p
 }
 
 /// Wie [`track_policy`], wenn schon bekannt ist, ob der Tag frei ist (der Companion kennt keine Abwesenheiten).
 pub fn policy_for(a: &AutoTrack, off: bool, date: NaiveDate, now: f64) -> Policy {
     let auto_from = if a.enabled && !off { a.window_start(date.weekday().num_days_from_monday() as usize, now) } else { None };
-    Policy { auto_from, ask: a.ask }
+    Policy { auto_from, ask: a.ask, lead: 0.0, tail: 0.0, join: 0.0 }
 }
 
 /* ---------- Plausibilitätsprüfung nach Mitternacht ---------- */

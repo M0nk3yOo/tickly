@@ -37,12 +37,18 @@ pub enum Track {
 }
 
 /// Entscheidungsgrundlage für „soll das Tracking von selbst starten?“.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Policy {
     /// Beginn des gerade aktiven Zeitfensters (Auto-Start), sonst `None`.
     pub auto_from: Option<f64>,
     /// Außerhalb der Zeitfenster nachfragen.
     pub ask: bool,
+    /// Rüstzeit nach dem Rechnerstart in Minuten (Einstellung `setup_before`).
+    pub lead: f64,
+    /// Rüstzeit beim Herunterfahren in Minuten (Einstellung `setup_after`).
+    pub tail: f64,
+    /// Ein Neustart, der kürzer dauert, zählt durchgehend als Arbeitszeit (Mindestdauer einer Sperre, Einstellung `chunk`); 0 = aus.
+    pub join: f64,
 }
 
 /// Ab so vielen Minuten Sperre fragt der Companion nach dem Entsperren: Pause oder Arbeitszeit (Termin)?
@@ -72,7 +78,7 @@ impl Track {
 
 impl DayState {
     fn blank(now: f64) -> DayState {
-        DayState { start: now, tracking: false, ended: None, last_app: "other".into(), segs: vec![], events: vec![], stop: Some(Stop::Idle), declined: None, last_beat: None, edited: false, carried: false, night_ok: false, planned_end: None, away: None }
+        DayState { start: now, tracking: false, ended: None, last_app: "other".into(), segs: vec![], events: vec![], stop: Some(Stop::Idle), declined: None, last_beat: None, edited: false, carried: false, night_ok: false, planned_end: None, away: None, os: None, shutdown_at: None }
     }
 
     /// Noch nichts erfasst: der Companion hat sich heute nicht gemeldet.
@@ -86,6 +92,7 @@ impl DayState {
     pub fn continued(&self, os: &str) -> DayState {
         let mut d = DayState::blank(0.0);
         d.last_app = self.last_app.clone();
+        d.os = self.os.clone();
         let locked = self.track() == Track::Locked;
         d.begin(0.0, 0.0, format!("{os}: Tracking läuft über Mitternacht weiter"));
         d.carried = true;
@@ -120,7 +127,7 @@ impl DayState {
     fn apply_policy(&mut self, now: f64, p: &Policy, os: &str) {
         if let Some(ws) = p.auto_from {
             let tail = if self.segs.is_empty() { "Arbeitstag beginnt" } else { "Lücke wird nicht gezählt" };
-            self.begin(now, now, format!("{os} gestartet · Tracking automatisch gestartet (Zeitfenster ab {}) · {tail}", hm(ws)));
+            self.begin_with(now, now, p.lead, format!("{os} gestartet · Tracking automatisch gestartet (Zeitfenster ab {}) · {tail}", hm(ws)));
         } else if p.ask {
             self.tracking = false;
             self.stop = Some(Stop::Ask);
@@ -194,13 +201,33 @@ impl DayState {
     /// Tracking (wieder) beginnen. Die Lücke seit dem letzten Stopp zählt nicht als Arbeitszeit.
     /// Beim ersten Abschnitt des Tages kann `from` rückwirkend (z. B. Rechnerstart) sein.
     fn begin(&mut self, now: f64, from: f64, txt: String) {
+        self.begin_with(now, from, 0.0, txt);
+    }
+
+    /// Wie `begin`; `lead` ist die Rüstzeit nach dem Rechnerstart (Minuten): das Tracking beginnt so viel früher, aber nicht
+    /// vor 00:00 und nicht vor dem Ende der vorherigen Arbeitszeit.
+    fn begin_with(&mut self, now: f64, from: f64, lead: f64, mut txt: String) {
         let app = Some(self.last_app.clone());
+        let lead = if lead.is_finite() { lead.max(0.0) } else { 0.0 };
+        let base = if self.segs.is_empty() { from.min(now) } else { now };
+        let start;
         if self.segs.is_empty() {
-            self.segs.push(Seg { from: from.min(now), to: None, kind: SegKind::App, app, note: None });
+            start = (base - lead).max(0.0);
+            self.segs.push(Seg { from: start, to: None, kind: SegKind::App, app, note: None });
         } else {
             let gap = self.ended.unwrap_or(now).min(now);
-            self.segs.push(Seg { from: gap, to: Some(now), kind: SegKind::Off, app: None, note: None });
-            self.segs.push(Seg { from: now, to: None, kind: SegKind::App, app, note: None });
+            start = (base - lead).max(gap);
+            // Der vorherige Abschnitt (z. B. durch die Rüstzeit beim Herunterfahren verlängert) darf nicht in den neuen hineinreichen
+            for s in self.segs.iter_mut() {
+                if s.to.is_some_and(|t| t > start) {
+                    s.to = Some(start.max(s.from));
+                }
+            }
+            self.segs.push(Seg { from: gap.min(start), to: Some(start), kind: SegKind::Off, app: None, note: None });
+            self.segs.push(Seg { from: start, to: None, kind: SegKind::App, app, note: None });
+        }
+        if base - start >= 0.5 {
+            txt.push_str(&format!(" · inkl. {} Min. Rüstzeit", (base - start).round()));
         }
         self.tracking = true;
         self.ended = None;
@@ -546,7 +573,28 @@ impl DayState {
 
     /// Rechner fährt herunter oder startet neu. Lief das Tracking, wird es nach dem nächsten Start fortgesetzt.
     pub fn shutdown(&mut self, now: f64) -> Result<(), &'static str> {
-        self.end_session(now, Stop::Shutdown, "Rechner heruntergefahren / neu gestartet · Tracking wird nach dem Start fortgesetzt")
+        self.shutdown_with(now, 0.0)
+    }
+
+    /// Wie `shutdown`; `tail` ist die Rüstzeit beim Herunterfahren (Minuten): die Arbeitszeit endet so viel später, höchstens um 24:00.
+    pub fn shutdown_with(&mut self, now: f64, tail: f64) -> Result<(), &'static str> {
+        let was_tracking = self.tracking;
+        if was_tracking {
+            self.shutdown_at = Some(now);
+        }
+        self.end_session(now, Stop::Shutdown, "Rechner heruntergefahren / neu gestartet · Tracking wird nach dem Start fortgesetzt")?;
+        let tail = if tail.is_finite() { tail.clamp(0.0, 1440.0 - now) } else { 0.0 };
+        if was_tracking && tail >= 0.5 {
+            let end = now + tail;
+            if let Some(o) = self.segs.last_mut().filter(|g| g.kind != SegKind::Off) {
+                o.to = Some(end);
+            }
+            self.ended = Some(end);
+            if let Some(e) = self.events.last_mut() {
+                e.txt.push_str(&format!(" · {} Min. Rüstzeit zählen mit (Arbeitsende {})", tail.round(), hm(end)));
+            }
+        }
+        Ok(())
     }
 
     fn end_session(&mut self, now: f64, kind: Stop, txt: &str) -> Result<(), &'static str> {
@@ -570,6 +618,28 @@ impl DayState {
         Ok(())
     }
 
+    /// Neustart nach kurzer Unterbrechung: das Tracking läuft durchgehend weiter, die Lücke zählt als Arbeitszeit
+    /// (wie eine Sperre unter der Mindestdauer). Eine beim Herunterfahren angehängte Rüstzeit entfällt.
+    fn rejoin(&mut self, now: f64, gap: f64, os: &str) {
+        let app = Some(self.last_app.clone());
+        if let Some(l) = self.segs.last_mut() {
+            l.to = Some(now.max(l.from));
+        }
+        if let Some(e) = self.events.iter_mut().rev().find(|e| e.k == "shutdown") {
+            if let Some(i) = e.txt.find(" Min. Rüstzeit zählen mit") {
+                if let Some(j) = e.txt[..i].rfind(" · ") {
+                    e.txt.truncate(j);
+                }
+            }
+        }
+        self.segs.push(Seg { from: now, to: None, kind: SegKind::App, app, note: None });
+        self.tracking = true;
+        self.ended = None;
+        self.stop = None;
+        self.declined = None;
+        self.ev(now, "start", format!("{os} gestartet · Neustart nach {} Min. · Tracking läuft durchgehend, die Unterbrechung zählt als Arbeitszeit", gap.round()));
+    }
+
     /// Rechner (erneut) gestartet. Nach einem Neustart mit laufendem Tracking geht es nahtlos weiter.
     pub fn on_boot(&mut self, now: f64, os: &str, p: &Policy) {
         match self.stop {
@@ -578,11 +648,17 @@ impl DayState {
                 let last = self.last_alive().min(now);
                 self.close_open_at(last);
                 self.ended = Some(last);
-                self.begin(now, now, format!("{os} gestartet · Tracking nach unsauberem Ende fortgesetzt · Lücke {} Min. nicht gezählt", (now - last).round()));
+                self.begin_with(now, now, p.lead, format!("{os} gestartet · Tracking nach unsauberem Ende fortgesetzt · Lücke {} Min. nicht gezählt", (now - last).round()));
             }
             Some(Stop::Shutdown) => {
+                let down = self.shutdown_at.take().or(self.ended).unwrap_or(now);
+                // Neustart: die kurze Unterbrechung zählt als Arbeitszeit, eine Rüstzeit gibt es dafür nicht
+                if p.join > 0.0 && now >= down && now - down < p.join {
+                    self.rejoin(now, now - down, os);
+                    return;
+                }
                 let from = self.ended.unwrap_or(now);
-                self.begin(now, now, format!("{os} gestartet · Tracking nach Neustart fortgesetzt · Lücke {} Min. nicht gezählt", (now - from).round()));
+                self.begin_with(now, now, p.lead, format!("{os} gestartet · Tracking nach Neustart fortgesetzt · Lücke {} Min. nicht gezählt", (now - from).round()));
             }
             Some(Stop::Ask) => {}
             _ => self.apply_policy(now, p, os),
@@ -591,6 +667,11 @@ impl DayState {
 
     /// Antwort auf „Arbeitest du gerade?“: `work` (ab jetzt), `boot` (rückwirkend ab Rechnerstart) oder `no`.
     pub fn answer(&mut self, now: f64, ans: &str) -> Result<(), &'static str> {
+        self.answer_with(now, ans, 0.0)
+    }
+
+    /// Wie `answer`; `lead` ist die Rüstzeit, die bei „ab Rechnerstart“ vor dem Rechnerstart mitgezählt wird.
+    pub fn answer_with(&mut self, now: f64, ans: &str, lead: f64) -> Result<(), &'static str> {
         if self.stop != Some(Stop::Ask) {
             return Err("Es ist keine Rückfrage offen.");
         }
@@ -598,7 +679,7 @@ impl DayState {
             "work" => self.begin(now, now, "Rückfrage bestätigt · Tracking gestartet".into()),
             "boot" => {
                 let from = if self.segs.is_empty() { self.start } else { now };
-                self.begin(now, from, format!("Rückfrage bestätigt · Tracking ab Rechnerstart ({}) gestartet", hm(from)));
+                self.begin_with(now, from, lead, format!("Rückfrage bestätigt · Tracking ab Rechnerstart ({}) gestartet", hm(from)));
             }
             "no" => {
                 self.stop = Some(Stop::Idle);
@@ -665,16 +746,19 @@ pub fn apply_event(day: &mut Option<DayState>, kind: &str, now: f64, os: &str, p
         "lock" => d.lock(now),
         "unlock" => d.unlock(now),
         "quit" => d.quit(now),
-        "shutdown" => d.shutdown(now),
+        "shutdown" => d.shutdown_with(now, p.tail),
         "pause" => d.pause(now),
         "end" => d.end_tracking(now),
         "start" => d.start_tracking(now),
-        "answer" => d.answer(now, answer.unwrap_or("")),
+        "answer" => d.answer_with(now, answer.unwrap_or(""), p.lead),
         "away" => d.answer_away(now, answer.unwrap_or("")),
         "tick" => { d.auto_tick(now, p); Ok(()) }
         _ => d.switch_app(app.unwrap_or(""), now),
     };
     res.map_err(String::from)?;
+    if kind != "beat" || d.os.is_none() {
+        d.os = Some(os.to_string());
+    }
     d.last_beat = Some(d.last_beat.map_or(now, |b| b.max(now)));
     Ok(())
 }

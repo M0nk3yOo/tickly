@@ -83,17 +83,26 @@ const S = {
   loggedIn: false, limited: false, ready: false, demoHint: true, demo: true, devices: [], pairCode: null, limits: { editDaysBack: 0 }, bkPol: null, smtp: null, smtpTest: null, forgotSent: false, verify: null, sessAdmin: { sessions: [], devices: [], latestVersion: null }, sessQ: '', mySessions: [], showSwitches: localStorage.getItem('tickly.switches') === '1', totp: { enabled: false, recoveryLeft: 0 }, mfa: null, mfaGate: null, sec: null, log: { entries: [], next: null }, logKind: 'all', logQ: '', backups: [],
   // Serverdaten (aus dem Snapshot)
   me: { id: '', name: '', email: '', role: 'user' },
-  set: { hours: [8, 8, 8, 8, 8, 0, 0], mode: 'net', rules: [], lockAsBreak: true, chunk: 15, state: 'NW', startBal: 0, idle: 10, trackApps: true, trackTitles: false, trackLock: true, autostart: true, excluded: [], pwLogin: true, theme: 'system', autoTrack: { enabled: true, ask: true, windows: [] }, extraDays: { rosenmontag: false, heiligabend: false, silvester: false, custom: [] } },
+  set: { hours: [8, 8, 8, 8, 8, 0, 0], mode: 'net', rules: [], lockAsBreak: true, chunk: 15, setupBefore: 0, setupAfter: 0, state: 'NW', startBal: 0, idle: 10, trackApps: true, trackTitles: false, trackLock: true, autostart: true, excluded: [], pwLogin: true, theme: 'system', autoTrack: { enabled: true, ask: true, windows: [] }, extraDays: { rosenmontag: false, heiligabend: false, silvester: false, custom: [] } },
   reg: { open: true, approval: true, domains: '', weekly: 40, passkeyPrompt: true, minPw: 14, mfaRequired: false, mfaGraceDays: 7, sessionDays: 30, editDaysBack: 90, verifyEmail: false, allowStartChange: true, allowPlannedEnd: true },
   passkeys: [], absences: [], users: [], day: { start: 0, tracking: false, ended: null, lastApp: 'mail', segs: [], events: [] }
 };
 const DB = { days: {}, forecastEnd: null, vacation: { total: 30, taken: 0, planned: 0, rest: 30 }, nextHolidays: [], holidays: [] };
 
+/** Betriebssystem des Rechners, der heute gemeldet hat (steht im Tag); sonst das zuletzt aktive gekoppelte Gerät */
+function syncOs() {
+  if (S.demo) return;
+  const o = S.day && S.day.os;
+  if (o) { S.os = o === 'macOS' ? 'mac' : 'windows'; return; }
+  const dev = (S.devices || []).find(x => x.online) || (S.devices || [])[0];
+  if (dev) S.os = dev.os === 'macos' ? 'mac' : 'windows';
+}
+
 function applySnapshot(s) {
   TODAY = s.today; TRACK_START = s.trackStart; S.memberSince = s.memberSince;
   S.me = s.me; S.set = s.settings;
   if (!S.themeLocked && S.set.theme && S.set.theme !== S.themePref) { S.themePref = S.set.theme; applyTheme(); } S.absences = s.absences; S.passkeys = s.passkeys; S.day = s.day; S.night = s.nightCheck || null; S.clash = s.deviceClash || null;
-  setApps(s.apps || []); S.devices = s.devices || []; S.totp = s.totp || { enabled: false, recoveryLeft: 0 }; S.mfa = s.mfa || null; S.limits = s.limits || { editDaysBack: 0 }; S.demo = !!s.demo; if (!S.demo) { S.now = s.now; if (S.devices[0]) S.os = S.devices[0].os === 'macos' ? 'mac' : 'windows'; }
+  setApps(s.apps || []); S.devices = s.devices || []; S.totp = s.totp || { enabled: false, recoveryLeft: 0 }; S.mfa = s.mfa || null; S.limits = s.limits || { editDaysBack: 0 }; S.demo = !!s.demo; if (!S.demo) { S.now = s.now; syncOs(); }
   S.users = s.users || []; if (s.reg) S.reg = s.reg; S.secQ = s.secQ || null; S.startBalSet = s.startBalSet; S.serverVersion = s.serverVersion;
   DB.days = {}; s.days.forEach(d => { DB.days[d.date] = d; });
   DB.forecastEnd = s.forecastEnd; DB.vacation = s.vacation; DB.nextHolidays = s.nextHolidays; DB.holidays = s.holidays;

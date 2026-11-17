@@ -249,7 +249,11 @@ impl<T: Transport> Engine<T> {
 
     /// Wann das Tracking von selbst startet: Zeitfenster des Benutzers, aber nur, wenn es auf diesem Gerät erlaubt ist.
     fn policy(&self, off: bool, date: NaiveDate, now: f64) -> Policy {
-        let mut p = policy_for(&self.settings().auto_track, off, date, now);
+        let st = self.settings();
+        let mut p = policy_for(&st.auto_track, off, date, now);
+        p.lead = st.setup_before.clamp(0.0, 120.0);
+        p.tail = st.setup_after.clamp(0.0, 120.0);
+        p.join = if st.lock_as_break { st.chunk.clamp(0.0, 240.0) } else { 0.0 };
         if !self.state.policy.device_auto {
             p.auto_from = None;
         }

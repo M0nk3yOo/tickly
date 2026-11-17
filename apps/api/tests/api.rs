@@ -2546,3 +2546,41 @@ async fn the_companion_asks_pause_or_work_after_a_long_lock() {
     let (_, r) = dev.call_h(Method::POST, "/api/device/events", Some(json!({"events": [{"seq": 2, "kind": "away", "at": at, "answer": "pause"}]})), Some(&token)).await;
     assert_eq!(r["results"][0]["ok"], false, "{r}");
 }
+
+#[tokio::test]
+async fn the_day_remembers_the_os_and_the_setup_time_counts() {
+    let mut c = Client::real().await;
+    assert_eq!(c.login("chef@example.de", "Sehr-Langes-Passwort-42").await, StatusCode::OK);
+    // Rüstzeit einstellen: gültig 0–120 Minuten
+    let mut s = c.get("/api/snapshot").await.1["settings"].clone();
+    assert_eq!((s["setupBefore"].clone(), s["setupAfter"].clone()), (json!(0.0), json!(0.0)), "{s}");
+    s["setupBefore"] = json!(200);
+    assert_eq!(c.put("/api/settings", s.clone()).await.0, StatusCode::BAD_REQUEST);
+    s["setupBefore"] = json!(5);
+    s["setupAfter"] = json!(10);
+    assert_eq!(c.put("/api/settings", s).await.0, StatusCode::OK);
+    // Zwei Geräte: ein Mac, der zuerst gekoppelt wurde, und ein Windows-Rechner, der heute meldet
+    let mut tokens = Vec::new();
+    for (name, os) in [("MacBook", "macos"), ("Büro-PC", "windows")] {
+        let code = c.post("/api/devices/pair-code", json!({})).await.1["code"].as_str().unwrap().to_string();
+        let mut dev = c.fresh();
+        dev.cookie = None;
+        tokens.push(dev.post("/api/device/pair", json!({"code": code, "name": name, "os": os, "version": "1.0.0"})).await.1["token"].as_str().unwrap().to_string());
+    }
+    let mut dev = c.fresh();
+    dev.cookie = None;
+    let at = chrono::Utc::now().to_rfc3339();
+    let (_, r) = dev.call_h(Method::POST, "/api/device/events", Some(json!({"events": [{"seq": 1, "kind": "boot", "at": at, "os": "windows"}, {"seq": 2, "kind": "answer", "at": at, "os": "windows", "answer": "work"}]})), Some(&tokens[1])).await;
+    assert_eq!(r["results"][0]["ok"], true, "{r}");
+    let day = c.get("/api/today").await.1["day"].clone();
+    assert_eq!(day["os"], "Windows", "{day}");
+    // Herunterfahren: Arbeitsende liegt 10 Minuten später
+    let (_, r) = dev.call_h(Method::POST, "/api/device/events", Some(json!({"events": [{"seq": 3, "kind": "shutdown", "at": at, "os": "windows"}]})), Some(&tokens[1])).await;
+    assert_eq!(r["results"][0]["ok"], true, "{r}");
+    let day = c.get("/api/today").await.1["day"].clone();
+    let (start, ended) = (day["segs"][0]["from"].as_f64().unwrap(), day["ended"].as_f64().unwrap());
+    let (_, now) = c.app.clock(None);
+    // Nur prüfbar, wenn der Test nicht kurz vor Mitternacht läuft
+    if now < 1400.0 { assert!((ended - now - 10.0).abs() < 1.5, "{day}"); }
+    assert!(start <= ended);
+}

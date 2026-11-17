@@ -562,6 +562,7 @@ async fn put_settings(State(app): St, h: HeaderMap, Json(s): Json<Settings>) -> 
     if s.hours.iter().any(|h| !h.is_finite() || *h < 0.0 || *h > 24.0) { return bad("Tagessoll muss zwischen 0 und 24 Stunden liegen") }
     if s.rules.len() > 8 || s.rules.iter().any(|r| !(0.0..=24.0).contains(&r.after) || !(0.0..=240.0).contains(&r.min)) { return bad("Ungültige Pausenregel") }
     if !(0.0..=240.0).contains(&s.chunk) { return bad("Ungültige Mindestdauer") }
+    if !(0.0..=120.0).contains(&s.setup_before) || !(0.0..=120.0).contains(&s.setup_after) { return bad("Die Rüstzeit muss zwischen 0 und 120 Minuten liegen") }
     if !s.start_bal.is_finite() || s.start_bal.abs() > 2000.0 { return bad("Ungültiger Übertrag") }
     if !holidays::STATES.iter().any(|(k, _)| *k == s.state) { return bad("Unbekanntes Bundesland") }
     let x = &s.extra_days;

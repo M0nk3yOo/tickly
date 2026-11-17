@@ -1,5 +1,13 @@
 # Änderungen
 
+## 0.9.18
+
+Aktualisierung von 0.9.17: Server und Companion ändern sich (keine Datenbankänderung). Die Rüstzeit beim Start und Herunterfahren rechnet der Companion mit; ein älterer Companion ignoriert sie.
+
+- **Betriebssystem stimmt jetzt.** Übersicht, Seitenleiste und „Arbeitsbeginn“ zeigten immer das zuerst gekoppelte Gerät (z. B. „macOS“), auch wenn heute ein Windows-Rechner gemeldet hat. Der Tag merkt sich jetzt das Betriebssystem des meldenden Rechners. Für ältere Tage ohne diese Angabe gilt das zuletzt aktive Gerät.
+- **Rüstzeit** (Einstellungen → Zeiterfassung): Zusatzzeit in Minuten *nach dem Rechnerstart* und *beim Herunterfahren*, je 0–120 (Standard 0 = aus). Nach dem Start beginnt das erste Tracking entsprechend früher (nicht vor 00:00 und nicht vor dem Ende der vorherigen Arbeitszeit). Beim Herunterfahren endet die Arbeitszeit entsprechend später (höchstens 24:00). Beides steht in den Ereignissen („inkl. 5 Min. Rüstzeit“). Beim Start zählt sie, wenn das Tracking mit dem Rechnerstart beginnt: automatisch im Zeitfenster, nach längerem Herunterfahren oder mit „ab Rechnerstart“. Vergangene Tage ändern sich nicht.
+- **Neustart zählt durchgehend.** Fährt der Rechner herunter und startet in weniger als der Mindestdauer einer Sperre (Standard 15 Minuten, „Gesperrte Zeit als Pause werten“ muss an sein) wieder, läuft das Tracking ohne Lücke weiter: die kurze Unterbrechung zählt als Arbeitszeit, wie eine Sperre unter der Mindestdauer. Für einen Neustart gibt es keine Rüstzeit. Das gilt auch ohne Rüstzeit-Einstellung und ändert, wie ein Neustart bisher gezählt wurde (die Lücke zählte nicht).
+
 ## 0.9.17
 
 Aktualisierung von 0.9.16: Server und Companion ändern sich (keine Datenbankänderung). Die Rückfrage nach einer längeren Sperre braucht den neuen Companion; ältere Companions laufen unverändert weiter.
