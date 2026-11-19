@@ -11,4 +11,4 @@ pub mod protocol;
 pub use engine::{Action, Engine, View};
 pub use http::{pair, Credentials, HttpTransport};
 pub use outbox::Outbox;
-pub use protocol::{Policy, QueuedEvent, Reply, ServerState, Transport, TransportError};
+pub use protocol::{is_newer, Policy, QueuedEvent, Reply, ServerState, Transport, TransportError, UpdateInfo};

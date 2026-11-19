@@ -52,6 +52,8 @@ pub struct Config {
     pub secrets: crate::secrets::Secrets,
     /// Geheimer Wert, den der vorgeschaltete Proxy im Header `X-Origin-Secret` mitschickt. Ohne ihn werden Anfragen abgelehnt.
     pub origin_secret: Option<String>,
+    /// Prüfung auf neue Versionen bei GitHub (siehe update.rs).
+    pub update: crate::update::UpdateCfg,
 }
 
 impl Config {
@@ -97,6 +99,7 @@ impl Config {
             companion_latest: opt("COMPANION_LATEST_VERSION"),
             backup_dir: opt("BACKUP_DIR").map(PathBuf::from),
             secrets: crate::secrets::Secrets::from_env(),
+            update: crate::update::UpdateCfg::from_env(),
             origin_secret: opt("ORIGIN_SECRET").map(|s| {
                 if s.chars().count() < 24 { panic!("ORIGIN_SECRET ist zu kurz: mindestens 24 Zeichen (z. B. `openssl rand -base64 48`)"); }
                 s

@@ -12,3 +12,4 @@ pub mod secq;
 pub mod secrets;
 pub mod sessions;
 pub mod tracking;
+pub mod update;

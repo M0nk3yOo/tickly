@@ -65,7 +65,13 @@ Verwendet für: Bestätigung der E-Mail-Adresse (auch bei einer **geänderten Ad
 
 ![Sitzungen](screenshots/14-admin-sitzungen.png)
 
-Alle aktiven **Sitzungen** mit Benutzer, **IP-Adresse und Land** (Flagge), Browser, Anmeldezeit und letzter Aktivität – jede lässt sich **beenden** (der Benutzer ist sofort abgemeldet). Darunter alle **Companion-Geräte** mit System, **Version** (Hinweis „veraltet“, wenn eine neuere Version im Einsatz oder per `COMPANION_LATEST_VERSION` bekannt ist), letztem Kontakt und der Möglichkeit, die Kopplung aufzuheben. Land und echte Adresse kennt der Server hinter Cloudflare (`CF-Connecting-IP`, `CF-IPCountry`).
+Alle aktiven **Sitzungen** mit Benutzer, **IP-Adresse und Land** (Flagge), Browser, Anmeldezeit und letzter Aktivität – jede lässt sich **beenden** (der Benutzer ist sofort abgemeldet). Darunter alle **Companion-Geräte** mit System, **Version** (Hinweis „veraltet“, wenn eine neuere Version im Einsatz oder per `COMPANION_LATEST_VERSION` oder durch die Update-Prüfung bekannt ist), letztem Kontakt und der Möglichkeit, die Kopplung aufzuheben. Land und echte Adresse kennt der Server hinter Cloudflare (`CF-Connecting-IP`, `CF-IPCountry`).
+
+## System und Updates
+
+Der Reiter **System** zeigt die **installierte** und die **neueste Version** (laut GitHub), den **Zeitpunkt der letzten Prüfung** und die Anleitung zum Aktualisieren. **Jetzt prüfen** fragt sofort nach; sonst geschieht das höchstens alle 6 Stunden im Hintergrund. Der Schalter **Nach Updates suchen** (Standard an) schaltet die Prüfung ab; `TICKLY_UPDATE_CHECK=0` in der `.env` hat Vorrang. Gibt es eine neuere Version, erscheinen oben in der Weboberfläche für Administratoren der Hinweis „Neue Version x.y.z verfügbar“ (je Version wegklickbar) und im Reiter ein Abzeichen.
+
+**Der Server kontaktiert dafür `api.github.com`.** Übertragen wird nur die Anfrage selbst (User-Agent `tickly-server/<Version>`), keine Benutzerdaten; Einzelheiten in [Sicherheit](SICHERHEIT.md). Aktualisieren: Sicherung anlegen, dann `docker compose pull && docker compose up -d` (oder bei Bau aus dem Quellcode `git pull && docker compose up -d --build`), siehe [Installation](INSTALLATION.md#aktualisieren). Dieselbe Quelle steuert den Hinweis „veraltet“ bei Companion-Geräten (`COMPANION_LATEST_VERSION` hat Vorrang), und die Companion-Apps zeigen ihren Benutzern „Update verfügbar“ mit Download.
 
 ## Protokoll
 

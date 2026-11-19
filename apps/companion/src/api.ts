@@ -38,6 +38,15 @@ export interface View {
   state: ServerState;
 }
 
+/** Neuere Version laut Server; `download` ist der Installer für dieses Betriebssystem */
+export interface UpdateInfo {
+  latest: string;
+  notes: string;
+  url: string;
+  download: string;
+  size?: number | null;
+}
+
 export interface UiState {
   paired: boolean;
   server: string;
@@ -47,6 +56,8 @@ export interface UiState {
   os: string;
   /** Startet der Companion mit dem Rechner? (Einstellung dieses Rechners, nicht des Servers) */
   autostart: boolean;
+  /** Neuere Version verfügbar (nur gesetzt, wenn sie höher ist als diese) */
+  update?: UpdateInfo | null;
   view: View | null;
 }
 
@@ -62,6 +73,7 @@ const mock: { s: UiState } = {
     version: "0.9.18",
     os: "windows",
     autostart: true,
+    update: new URLSearchParams(location.search).get("update") === "1" ? { latest: "0.9.19", notes: "", url: "https://github.com/M0nk3yOo/tickly/releases/latest", download: "https://github.com/M0nk3yOo/tickly/releases/latest", size: 4_200_000 } : null,
     view: {
       connected: new URLSearchParams(location.search).get("offline") !== "1", unauthorized: false, error: null, pending: new URLSearchParams(location.search).get("offline") === "1" ? 14 : 0, estimated: new URLSearchParams(location.search).get("offline") === "1", locked: false, app: "VS Code", asOf: Date.now(),
       state: {
@@ -81,6 +93,8 @@ export const api = {
   act: (kind: "pause" | "resume" | "end" | "answer" | "away", value?: string): Promise<UiState> => (inTauri ? invoke("act", { kind, value }) : Promise.resolve(mock.s)),
   /** Weboberfläche im Browser öffnen, auf Wunsch gleich die Einstellungen */
   dashboard: (page?: "settings"): Promise<void> => (inTauri ? invoke("open_dashboard", { page }) : Promise.resolve()),
+  /** Installer der neueren Version (oder mit notes die Versionshinweise) im Browser öffnen */
+  openUpdate: (notes = false): Promise<void> => (inTauri ? invoke("open_update", { notes }) : Promise.resolve()),
   setAutostart: (on: boolean): Promise<UiState> => (inTauri ? invoke("set_autostart", { on }) : Promise.resolve({ ...mock.s, autostart: on })),
   setAutoTrack: (on: boolean): Promise<UiState> => (inTauri ? invoke("set_auto_track", { on }) : Promise.resolve(mock.s)),
   quit: (): Promise<void> => (inTauri ? invoke("quit_app") : Promise.resolve()),

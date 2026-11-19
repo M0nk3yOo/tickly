@@ -145,6 +145,18 @@ function Main({ s, set }: { s: UiState; set: (s: UiState) => void }) {
             <button className="btn sm" onClick={async () => set(await api.unpair())}>Neu koppeln</button>
           </div>
         )}
+        {s.update && (
+          <div className="callout warn">
+            <b>Update verfügbar ({s.update.latest})</b>
+            <span>
+              Du nutzt Version {s.version}.{s.update.size ? ` Der Installer ist ${(s.update.size / 1048576).toFixed(1).replace(".", ",")} MB groß.` : ""} Lade ihn herunter und installiere ihn über die vorhandene Version; die Kopplung bleibt erhalten.
+            </span>
+            <div className="row">
+              <button className="btn sm primary" onClick={() => api.openUpdate()}>Herunterladen</button>
+              <button className="btn sm" onClick={() => api.openUpdate(true)}>Versionshinweise</button>
+            </div>
+          </div>
+        )}
         {st?.mfa?.required && !st.mfa.compliant && (
           <div className="callout warn">
             <b>Bitte Konto absichern.</b>

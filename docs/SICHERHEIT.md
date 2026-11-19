@@ -38,7 +38,12 @@ Mit **`TICKLY_SECRET`** (mind. 24 Zeichen; oder `TICKLY_SECRET_FILE`) werden ver
 
 - TLS endet am vorgeschalteten Proxy (Zoraxy, Nginx, Cloudflare …); die Verbindung Proxy → Tickly ist unverschlüsseltes HTTP und gehört in ein vertrauenswürdiges Netz. Der Port lauscht auf allen Adressen; **`ORIGIN_SECRET`** sorgt dafür, dass nur Anfragen mit dem passenden Header `X-Origin-Secret` angenommen werden (Vergleich in konstanter Zeit, Wert nie im Protokoll). Verstöße bekommen 403 und stehen im Protokoll, je Adresse höchstens einmal pro Minute. Das ersetzt keine Firewall.
 - Die **echte Client-IP** gilt nur, wenn die Verbindung von einem vertrauenswürdigen Proxy kommt (lokal, private Netze, `TRUSTED_PROXIES`). Wer den Server direkt erreicht, kann seine Adresse nicht fälschen.
+- **Update-Prüfung:** Der Server kontaktiert standardmäßig **`api.github.com`** (HTTPS), um die neueste Version zu erfahren, beim Start verzögert und danach höchstens alle 6 Stunden. Übertragen wird nur die Anfrage selbst: `GET /repos/<Repository>/releases/latest` mit dem User-Agent `tickly-server/<Version>`; GitHub sieht dabei zwangsläufig die IP-Adresse des Servers. Es werden **keine Benutzer-, Geräte- oder Zeitdaten** gesendet, keine Cookies und keine Kennungen. Die Antwort (Version, Link, gekürzte Versionshinweise, Download-Links) wird in der Datenbank zwischengespeichert; Fehler stehen nur im Server-Protokoll. Abschalten: `TICKLY_UPDATE_CHECK=0` (hat Vorrang) oder in der Serververwaltung unter *System*; im Demo-Modus wird nie angefragt. Der Companion geht dafür **nicht** selbst ins Netz, er bekommt die Information vom Server; heruntergeladen wird erst nach einem Klick im Browser.
 - Der Container läuft als unprivilegierter Benutzer (Standard UID 65532, per `RUN_AS` änderbar) auf einem Image ohne Shell.
+
+## Update-Prüfung
+
+Siehe oben unter *Netzwerk*: ausgehend nur eine anonyme Anfrage an GitHub, abschaltbar.
 
 ## Datenschutz (DSGVO)
 

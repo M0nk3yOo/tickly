@@ -1,5 +1,13 @@
 # Änderungen
 
+## Unveröffentlicht
+
+Aktualisierung: Server, Weboberfläche und Companion ändern sich (keine Datenbankänderung). Ältere Companions laufen unverändert weiter, kennen aber den Update-Hinweis nicht.
+
+- **Update-Hinweise.** Der Server fragt höchstens alle 6 Stunden bei GitHub (`api.github.com`) nach dem neuesten Release, ohne Benutzerdaten und nie im Demo-Modus. Administratoren sehen oben „Neue Version x.y.z verfügbar“ (je Version wegklickbar) mit Link zu den Versionshinweisen und der Anleitung; unter *Serververwaltung → System* stehen installierte/neueste Version, Zeitpunkt der Prüfung, **Jetzt prüfen** und der Schalter **Nach Updates suchen**. Abschalten für abgeschottete Installationen: `TICKLY_UPDATE_CHECK=0` (hat Vorrang), Repository: `TICKLY_UPDATE_REPO`. Der Hinweis „veraltet“ bei Companion-Geräten nutzt dieselbe Quelle (`COMPANION_LATEST_VERSION` hat weiter Vorrang).
+- **Companion meldet Updates.** Das Fenster zeigt „Update verfügbar (x.y.z)“ mit *Herunterladen* (Installer für das eigene System im Browser) und *Versionshinweise*, das Tray-Menü den Eintrag „Update verfügbar …“. Die Information kommt vom Server (neues Feld `update` im Gerätezustand), der Companion geht nicht selbst ins Netz und behält sie offline. Keine stille Selbstinstallation, die Installer sind nicht signiert.
+- **Download-Hinweis in der Weboberfläche.** Wer noch kein Companion-Gerät gekoppelt hat, sieht auf Übersicht und Companion-Seite einen ausblendbaren Hinweis mit *Für macOS laden*, *Für Windows laden* (dein System hervorgehoben) und *Gerät koppeln*. Ausgeblendet kommt er nach 30 Tagen oder über den Link auf der Companion-Seite wieder. Dort stehen die Download-Links auch dauerhaft neben dem Kopplungscode, mit Version und Dateigröße.
+
 ## 0.9.18
 
 Aktualisierung von 0.9.17: Server und Companion ändern sich (keine Datenbankänderung). Die Rüstzeit beim Start und Herunterfahren rechnet der Companion mit; ein älterer Companion ignoriert sie.

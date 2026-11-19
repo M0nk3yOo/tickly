@@ -90,9 +90,45 @@ pub struct ServerState {
     pub night_check: Option<NightInfo>,
     /// Ein zweiter Companion hat das Tracking gestartet, während dieser lief (oder umgekehrt).
     pub device_clash: Option<ClashInfo>,
+    /// Neuere Companion-Version verfügbar (der Server hat sie bei GitHub gefunden und nennt den Installer für dieses System).
+    pub update: Option<UpdateInfo>,
     /// Offene Rückfrage nach einer längeren Sperre (Pause oder Arbeitszeit?). Kommt aus dem lokal geführten Tag.
     #[serde(skip_deserializing)]
     pub away: Option<Away>,
+}
+
+/// Hinweis auf eine neuere Version. Der Companion geht dafür nicht selbst ins Netz.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct UpdateInfo {
+    pub latest: String,
+    /// Versionshinweise (gekürzt)
+    pub notes: String,
+    /// Seite des Releases
+    pub url: String,
+    /// Installer für das Betriebssystem dieses Geräts
+    pub download: String,
+    pub size: Option<u64>,
+}
+
+fn version_parts(v: &str) -> Option<Vec<u64>> {
+    let core = v.trim().trim_start_matches(['v', 'V']).split(['-', '+']).next()?;
+    let mut p: Vec<u64> = core.split('.').map(|x| x.parse().ok()).collect::<Option<_>>()?;
+    p.resize(p.len().max(3), 0);
+    Some(p)
+}
+
+/// Ist `latest` eine höhere Version als `current` (0.9.9 < 0.9.18)? Unlesbares gilt nicht als neuer.
+pub fn is_newer(latest: &str, current: &str) -> bool {
+    match (version_parts(latest), version_parts(current)) {
+        (Some(mut a), Some(mut b)) => {
+            let n = a.len().max(b.len());
+            a.resize(n, 0);
+            b.resize(n, 0);
+            a > b
+        }
+        _ => false,
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
@@ -135,5 +171,34 @@ pub trait Transport: Send {
     /// Stellt für dieses Gerät ein, ob das Tracking von selbst startet; liefert den neuen Zustand.
     fn set_auto_track(&mut self, _on: bool, _timeout: Duration) -> Result<ServerState, TransportError> {
         Err(TransportError::Server("Wird von dieser Verbindung nicht unterstützt".into()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn versionsvergleich() {
+        assert!(is_newer("0.9.18", "0.9.9"));
+        assert!(!is_newer("0.9.9", "0.9.18"));
+        assert!(!is_newer("0.9.18", "0.9.18"));
+        assert!(is_newer("v1.0.0", "0.9.18"));
+        assert!(is_newer("1.0.1", "1.0"));
+        assert!(!is_newer("", "0.9.18"));
+        assert!(!is_newer("0.9.18", "unbekannt"));
+    }
+
+    #[test]
+    fn update_im_zustand() {
+        let s: ServerState = serde_json::from_str(r#"{"track":"idle","update":{"latest":"0.9.19","notes":"Neu","url":"https://x/r","download":"https://x/a.exe","size":12}}"#).unwrap();
+        let u = s.update.clone().unwrap();
+        assert_eq!((u.latest.as_str(), u.download.as_str(), u.size), ("0.9.19", "https://x/a.exe", Some(12)));
+        // der gespeicherte Stand behält die Information (offline weiterhin sichtbar)
+        let back: ServerState = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert_eq!(back.update, s.update);
+        // ältere Server kennen das Feld nicht, `null` bedeutet „kein Update“
+        assert!(serde_json::from_str::<ServerState>(r#"{"track":"idle"}"#).unwrap().update.is_none());
+        assert!(serde_json::from_str::<ServerState>(r#"{"update":null}"#).unwrap().update.is_none());
     }
 }

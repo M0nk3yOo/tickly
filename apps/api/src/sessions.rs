@@ -54,7 +54,9 @@ async fn admin_list(State(app): St, h: HeaderMap) -> Res<Json<Value>> {
     let devs: Vec<(Uuid, String, String, String, String, String, String, DateTime<Utc>, Option<DateTime<Utc>>)> = sqlx::query_as(
         "SELECT d.id, d.user_id, u.name, u.email, d.name, d.os, d.version, d.created_at, d.last_seen_at FROM devices d JOIN users u ON u.id = d.user_id WHERE d.revoked_at IS NULL ORDER BY d.last_seen_at DESC NULLS LAST").fetch_all(&app.pool).await?;
     // Neueste bekannte Version: höchste gemeldete oder per COMPANION_LATEST_VERSION vorgegeben
-    let latest = devs.iter().map(|d| d.6.as_str()).chain(app.cfg.companion_latest.as_deref()).filter(|v| !version_key(v).is_empty()).max_by_key(|v| version_key(v)).map(String::from);
+    // ohne Vorgabe die neueste bei GitHub gefundene Version (siehe update.rs)
+    let upstream = if app.cfg.companion_latest.is_none() { crate::update::current(&app).await.map(|i| i.latest) } else { None };
+    let latest = devs.iter().map(|d| d.6.as_str()).chain(app.cfg.companion_latest.as_deref()).chain(upstream.as_deref()).filter(|v| !version_key(v).is_empty()).max_by_key(|v| version_key(v)).map(String::from);
     let now = Utc::now();
     let devices: Vec<Value> = devs.into_iter().map(|(id, uid, user_name, email, name, os, version, created, seen)| {
         let outdated = latest.as_deref().is_some_and(|l| !version_key(&version).is_empty() && version_key(&version) < version_key(l));

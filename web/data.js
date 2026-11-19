@@ -103,7 +103,7 @@ function applySnapshot(s) {
   S.me = s.me; S.set = s.settings;
   if (!S.themeLocked && S.set.theme && S.set.theme !== S.themePref) { S.themePref = S.set.theme; applyTheme(); } S.absences = s.absences; S.passkeys = s.passkeys; S.day = s.day; S.night = s.nightCheck || null; S.clash = s.deviceClash || null;
   setApps(s.apps || []); S.devices = s.devices || []; S.totp = s.totp || { enabled: false, recoveryLeft: 0 }; S.mfa = s.mfa || null; S.limits = s.limits || { editDaysBack: 0 }; S.demo = !!s.demo; if (!S.demo) { S.now = s.now; syncOs(); }
-  S.users = s.users || []; if (s.reg) S.reg = s.reg; S.secQ = s.secQ || null; S.startBalSet = s.startBalSet; S.serverVersion = s.serverVersion;
+  S.users = s.users || []; if (s.reg) S.reg = s.reg; S.secQ = s.secQ || null; S.startBalSet = s.startBalSet; S.serverVersion = s.serverVersion; S.update = s.update || null; S.download = s.download || null;
   DB.days = {}; s.days.forEach(d => { DB.days[d.date] = d; });
   DB.forecastEnd = s.forecastEnd; DB.vacation = s.vacation; DB.nextHolidays = s.nextHolidays; DB.holidays = s.holidays;
   S.ready = true;

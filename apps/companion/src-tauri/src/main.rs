@@ -16,7 +16,7 @@ use tauri::{
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_notification::NotificationExt;
-use tickly_agent::{Action, Credentials, Engine, HttpTransport, Outbox, View};
+use tickly_agent::{is_newer, Action, Credentials, Engine, HttpTransport, Outbox, UpdateInfo, View};
 
 type Eng = Engine<HttpTransport>;
 
@@ -44,6 +44,8 @@ struct UiState {
     version: &'static str,
     os: &'static str,
     autostart: bool,
+    /// Neuere Version laut Server (nur, wenn sie wirklich höher ist als diese)
+    update: Option<UpdateInfo>,
     view: Option<View>,
 }
 
@@ -58,6 +60,7 @@ fn ui_state(sh: &Shared) -> UiState {
         version: env!("CARGO_PKG_VERSION"),
         os: tickly_platform::system().os(),
         autostart: sh.autostart.load(Ordering::Relaxed),
+        update: view.as_ref().and_then(|v| v.state.update.clone()).filter(|u| is_newer(&u.latest, env!("CARGO_PKG_VERSION"))),
         view,
     }
 }
@@ -107,6 +110,7 @@ struct Tray {
     status: MenuItem<tauri::Wry>,
     toggle: MenuItem<tauri::Wry>,
     end: MenuItem<tauri::Wry>,
+    update: MenuItem<tauri::Wry>,
 }
 
 fn refresh_ui(app: &AppHandle, tray: &Tray) {
@@ -135,6 +139,11 @@ fn refresh_ui(app: &AppHandle, tray: &Tray) {
     };
     let _ = tray.toggle.set_text(label);
     let _ = tray.toggle.set_enabled(enabled);
+    let _ = tray.update.set_enabled(st.update.is_some());
+    let _ = tray.update.set_text(match &st.update {
+        Some(u) => format!("Update verfügbar ({}) …", u.latest),
+        None => format!("Tickly {} ist aktuell", st.version),
+    });
     let _ = tray.end.set_enabled(matches!(track.as_str(), "running" | "locked" | "paused"));
     if let Some(t) = app.tray_by_id("main") {
         let _ = t.set_tooltip(Some(status_text(&st.view)));
@@ -257,6 +266,24 @@ fn open_dashboard(app: AppHandle, sh: tauri::State<Arc<Shared>>, page: Option<St
     open_web(&app, &sh, page.as_deref());
 }
 
+/// Öffnet den Installer (oder die Versionshinweise) der neueren Version im Browser. Die Adresse kommt aus dem
+/// Zustand des Servers, nicht aus dem Fenster, und muss mit http(s) beginnen.
+fn open_update_page(app: &AppHandle, sh: &Shared, notes: bool) {
+    let u = sh.engine.lock().unwrap().as_ref().and_then(|e| e.view().state.update).filter(|u| is_newer(&u.latest, env!("CARGO_PKG_VERSION")));
+    if let Some(u) = u {
+        let url = if notes || u.download.is_empty() { u.url } else { u.download };
+        if url.starts_with("https://") || url.starts_with("http://") {
+            use tauri_plugin_opener::OpenerExt;
+            let _ = app.opener().open_url(url, None::<&str>);
+        }
+    }
+}
+
+#[tauri::command]
+fn open_update(app: AppHandle, sh: tauri::State<Arc<Shared>>, notes: Option<bool>) {
+    open_update_page(&app, &sh, notes.unwrap_or(false));
+}
+
 #[tauri::command]
 fn quit_app(app: AppHandle, sh: tauri::State<Arc<Shared>>) {
     quit(&app, &sh);
@@ -281,7 +308,7 @@ fn main() {
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--autostart"])))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![get_view, pair, unpair, act, open_dashboard, set_autostart, set_auto_track, quit_app])
+        .invoke_handler(tauri::generate_handler![get_view, pair, unpair, act, open_dashboard, set_autostart, set_auto_track, open_update, quit_app])
         .setup(move |app| {
             let dir = app.path().app_data_dir()?;
             let store = Store::new(&dir);
@@ -320,8 +347,9 @@ fn main() {
             let open = MenuItem::with_id(app, "open", "Fenster öffnen", true, None::<&str>)?;
             let dash = MenuItem::with_id(app, "dash", "Dashboard im Browser", true, None::<&str>)?;
             let settings = MenuItem::with_id(app, "settings", "Einstellungen im Browser", true, None::<&str>)?;
+            let update = MenuItem::with_id(app, "update", format!("Tickly {} ist aktuell", env!("CARGO_PKG_VERSION")), false, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "Tickly beenden", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&status, &PredefinedMenuItem::separator(app)?, &toggle, &end, &open, &dash, &settings, &PredefinedMenuItem::separator(app)?, &quit_i])?;
+            let menu = Menu::with_items(app, &[&status, &PredefinedMenuItem::separator(app)?, &toggle, &end, &open, &dash, &settings, &PredefinedMenuItem::separator(app)?, &update, &quit_i])?;
             // macOS: einfarbiges Symbol, das das System passend zur Menüleiste einfärbt (hell/dunkel); Windows: das farbige
             #[cfg(target_os = "macos")]
             let (tray_icon, as_template) = (tauri::include_image!("icons/tray-template.png"), true);
@@ -350,6 +378,7 @@ fn main() {
                         "open" => show_window(app),
                         "dash" => open_web(app, &sh, None),
                         "settings" => open_web(app, &sh, Some("settings")),
+                        "update" => open_update_page(app, &sh, false),
                         "quit" => quit(app, &sh),
                         _ => {}
                     }
@@ -360,7 +389,7 @@ fn main() {
                     }
                 })
                 .build(app)?;
-            let tray = Tray { status, toggle, end };
+            let tray = Tray { status, toggle, end, update };
 
             // Nur beim ersten Start oder manuellen Öffnen zeigen; Autostart läuft still im Hintergrund
             if creds.is_none() || manual {
