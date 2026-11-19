@@ -340,12 +340,16 @@ async fn verify(State(app): St, h: HeaderMap, Extension(ip): Extension<ClientIp>
     let u = db::user_by_id(&app.pool, &uid).await?.ok_or(ApiError(axum::http::StatusCode::NOT_FOUND, "Konto nicht gefunden".into()))?;
     netsec::log(&app, "register", true, ip, &h, Some(&u.id), Some(&u.email), "E-Mail-Adresse bestätigt").await;
     registration_ready(&app, &u).await;
-    if u.status != "active" { return Ok(Json(json!({ "ok": true, "status": u.status })).into_response()) }
+    // Registrierung „direkt mit Passkey“: Das Konto hat weder Passwort noch Passkey (der Passkey ließ sich vor der Bestätigung nicht
+    // einrichten, es gab noch keine Sitzung). Der Link ist das Geheimnis: Er öffnet eine Sitzung, in der der Passkey eingerichtet wird.
+    let needs_passkey = u.password_hash.is_none() && db::cred_count(&app.pool, &u.id).await? == 0;
+    if u.status != "active" && !(needs_passkey && u.status == "pending") { return Ok(Json(json!({ "ok": true, "status": u.status })).into_response()) }
+    let limited = u.status != "active";
     let reg = db::reg_policy(&app.pool).await?;
     let secs = db::session_secs(&reg, &db::mfa_status(&app.pool, &u, &reg).await?);
-    let sid = db::create_session(&app.pool, &u.id, false, false, secs, &ip, &netsec::ua(&h)).await?;
+    let sid = db::create_session(&app.pool, &u.id, limited, false, secs, &ip, &netsec::ua(&h)).await?;
     let secure = if app.cfg.secure_cookie { "; Secure" } else { "" };
-    Ok(([(header::SET_COOKIE, format!("tickly_sid={sid}; Path=/; HttpOnly; SameSite=Lax; Max-Age={secs}{secure}"))], Json(json!({ "ok": true, "status": "active" }))).into_response())
+    Ok(([(header::SET_COOKIE, format!("tickly_sid={sid}; Path=/; HttpOnly; SameSite=Lax; Max-Age={secs}{secure}"))], Json(json!({ "ok": true, "status": u.status, "needsPasskey": needs_passkey }))).into_response())
 }
 
 /// Link aus der Mail an die neue Adresse: übernimmt sie (einmalig). Der Link ist das Geheimnis, eine Anmeldung ist nicht nötig.

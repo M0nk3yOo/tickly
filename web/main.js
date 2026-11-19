@@ -66,7 +66,7 @@ async function route() {
     const token = new URLSearchParams(location.hash.split('?')[1] || '').get('token');
     if (token && S.verifyToken !== token) {
       S.verifyToken = token; S.verify = { state: 'work' };
-      api('POST', '/auth/verify', { token }).then(async r2 => { if (r2.status === 'active') { history.replaceState(null, '', '#/dashboard'); await enter(); } else { S.verify = { state: 'pending' }; render(); } }).catch(e => { S.verify = { state: 'error', msg: e.message }; render(); });
+      api('POST', '/auth/verify', { token }).then(async r2 => { if (r2.needsPasskey) { S.regStatus = r2.status; S.regStep = 'pknew'; S.regPkFirst = true; S.verify = null; history.replaceState(null, '', '#/register'); route(); } else if (r2.status === 'active') { history.replaceState(null, '', '#/dashboard'); await enter(); } else { S.verify = { state: 'pending' }; render(); } }).catch(e => { S.verify = { state: 'error', msg: e.message }; render(); });
     } else if (!token) S.verify = { state: 'error', msg: 'Der Link ist unvollständig.' };
   }
   // Link aus der Mail an die neue Adresse: übernimmt sie (einmalig), mit oder ohne Anmeldung
@@ -244,9 +244,19 @@ const H = {
     const name = $('#rg-name').value.trim(), mail = $('#rg-mail').value.trim();
     if (!name || !mail) return toast('Bitte zuerst Name und E-Mail eingeben', true);
     const r = await api('POST', '/auth/register', { name, email: mail, startBal: regStartBal() });
+    S.verifyMail = mail; S.regPasskey = false; S.regPkFirst = true;
+    // Mit E-Mail-Bestätigung gibt es noch keine Sitzung: der Passkey wird eingerichtet, sobald der Link in der Mail geklickt ist
+    if (r.status === 'verify') { S.regStep = 'verify'; render(); return; }
+    S.limited = r.status !== 'active'; S.regStatus = r.status;
+    await H.regPasskeyTry();
+  },
+  /* Passkey bei der Registrierung einrichten – scheitert es (abgebrochen, nicht unterstützt), bleibt die Seite stehen und lässt es wiederholen */
+  async regPasskeyTry() {
     const ok = await withPasskeyDialog('reg', () => webauthnCreate());
-    S.limited = r.status !== 'active';
-    if (r.status === 'active') { S.regStep = 'done'; if (ok) return enter(); render(); } else { S.regStep = 'pending'; S.regPasskey = ok; render(); }
+    if (!ok) { S.regStep = 'pkretry'; render(); return; }
+    S.regPasskey = true;
+    if (S.regStatus === 'active') { S.regStep = 'done'; return enter(); }
+    S.regStep = 'pending'; render();
   },
   /* Passkey nach der Registrierung mit Passwort einrichten */
   async passkeyReg() { const ok = await withPasskeyDialog('reg', () => webauthnCreate()); if (ok) { toast('Passkey eingerichtet'); await enter(); } },
@@ -345,9 +355,9 @@ const H = {
     const questions = S.reg.secQuestions ? readSecQ('sq') : [], qp = S.reg.secQuestions ? secQProblem(questions) : '';
     if (qp) return toast(qp, true);
     const r = await api('POST', '/auth/register', { name, email: mail, password: pw, startBal: regStartBal(), questions });
-    S.verifyMail = mail; S.regStep = r.status === 'verify' ? 'verify' : r.status === 'active' ? 'done' : 'pending'; S.regPasskey = false; render();
+    S.verifyMail = mail; S.regPkFirst = false; S.regStep = r.status === 'verify' ? 'verify' : r.status === 'active' ? 'done' : 'pending'; S.regStatus = r.status; S.regPasskey = false; render();
   },
-  regReset() { S.regStep = 'form'; render(); },
+  regReset() { S.regStep = 'form'; S.regPkFirst = false; render(); },
   async regContinue() { await enter(); },
   async logout() {
     try { await api('POST', '/auth/logout', {}); } catch (e) { /* egal */ }

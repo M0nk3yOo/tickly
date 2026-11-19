@@ -15,6 +15,10 @@ pub struct QueuedEvent {
     pub os: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub answer: Option<String>,
+    /// Der Bildschirm war gesperrt, als das Ereignis entstand: das Tracking startet dann nicht von selbst
+    /// (der Mac wacht im Hintergrund auf, ohne dass jemand am Rechner sitzt).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub locked: bool,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]

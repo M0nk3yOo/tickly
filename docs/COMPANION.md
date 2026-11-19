@@ -52,6 +52,7 @@ Unbeaufsichtigte Einrichtung (z. B. per Skript): Umgebungsvariable `TICKLY_PAIR=
 | **Tickly beenden** (Tray-Menü, Cmd+Q) | Das Tracking endet, das **Arbeitsende** wird gesetzt. |
 | Neustart/Herunterfahren während Tracking | Wird gemeldet; nach dem nächsten Start läuft das Tracking **von selbst weiter** (die Zeit dazwischen zählt nicht). |
 | Absturz, Stromausfall | Die Erfassung endet beim letzten Lebenszeichen (alle 30 s); beim nächsten Start geht es weiter. |
+| Mac wacht im Hintergrund auf (gesperrt) | Das Tracking startet im Startzeitfenster nicht von selbst, solange der Bildschirm gesperrt ist, sondern erst nach dem ersten Entsperren. |
 | Bildschirm gesperrt, Ruhezustand | Wird als gesperrt erfasst (zählt als Pause, wenn länger als die eingestellte Mindestdauer). Nach mindestens 15 Minuten fragt der Companion beim Entsperren: **Pause** oder **Arbeitszeit** (z. B. ein Termin)? *Arbeitszeit* zählt die Zeit als Eintrag „Termin“, ohne Antwort bleibt sie eine Pause. |
 | **Tracking pausieren** im Fenster/Tray | Pause, der Tag bleibt offen, die Pause zählt nicht. **Tracking fortsetzen** mit einem Klick. |
 | Keine Verbindung | Alles läuft weiter, die Ereignisse werden gespeichert und später übertragen; das Überstundenkonto ist dann geschätzt. |

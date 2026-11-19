@@ -59,6 +59,31 @@ impl Store {
     pub fn agent_path(&self) -> PathBuf {
         self.dir.join("agent.json")
     }
+    /// Beenden-Marker: wird beim Herunterfahren sofort und ohne Sperre geschrieben (siehe `mark_finish`).
+    fn finish_path(&self) -> PathBuf {
+        self.dir.join("finish.json")
+    }
+
+    /// Beim Herunterfahren bleiben nur Sekunden. Läuft gerade ein Netzwerkaufruf und hält die Engine, kann das Ereignis nicht sofort
+    /// erfasst werden: Dieser Marker (Art und Zeitpunkt) übersteht das und wird beim nächsten Start nachgetragen.
+    pub fn mark_finish(&self, kind: &str, at: chrono::DateTime<chrono::Utc>) {
+        let body = serde_json::json!({ "kind": kind, "at": at.to_rfc3339() }).to_string();
+        let tmp = self.dir.join("finish.tmp");
+        if std::fs::write(&tmp, body).is_ok() {
+            let _ = std::fs::rename(&tmp, self.finish_path());
+        }
+    }
+    pub fn clear_finish(&self) {
+        let _ = std::fs::remove_file(self.finish_path());
+    }
+    /// Ein nicht erfasstes Beenden/Herunterfahren aus der letzten Sitzung (und löscht den Marker).
+    pub fn take_finish(&self) -> Option<(String, chrono::DateTime<chrono::Utc>)> {
+        let v: serde_json::Value = serde_json::from_slice(&std::fs::read(self.finish_path()).ok()?).ok()?;
+        self.clear_finish();
+        let at = chrono::DateTime::parse_from_rfc3339(v["at"].as_str()?).ok()?.with_timezone(&chrono::Utc);
+        Some((v["kind"].as_str()?.to_string(), at))
+    }
+
     fn meta_path(&self) -> PathBuf {
         self.dir.join("device.json")
     }
@@ -97,5 +122,6 @@ impl Store {
         let _ = std::fs::remove_file(self.token_file());
         let _ = std::fs::remove_file(self.outbox_path());
         let _ = std::fs::remove_file(self.agent_path());
+        self.clear_finish();
     }
 }

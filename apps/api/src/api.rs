@@ -355,10 +355,10 @@ struct PkLoginStart { email: String }
 
 async fn pk_login_start(State(app): St, Extension(ip): Extension<ClientIp>, Json(r): Json<PkLoginStart>) -> Res<Json<Value>> {
     netsec::guard(&app, ip).await?;
-    let Some(u) = db::user_by_email(&app.pool, &r.email).await? else { return not_found("Für diese E-Mail ist kein Passkey eingerichtet.") };
+    let Some(u) = db::user_by_email(&app.pool, &r.email).await? else { return not_found("Für diese E-Mail ist kein Passkey eingerichtet. Hast du bei der Registrierung keinen Passkey angelegt, nutze „Passwort vergessen“ oder bitte einen Administrator um ein neues Passwort.") };
     if let Some(e) = status_error(&u) { return Err(e) }
     let creds = db::creds(&app.pool, &u.id).await?;
-    if creds.is_empty() { return not_found("Für diese E-Mail ist kein Passkey eingerichtet.") }
+    if creds.is_empty() { return not_found("Für diese E-Mail ist kein Passkey eingerichtet. Hast du bei der Registrierung keinen Passkey angelegt, nutze „Passwort vergessen“ oder bitte einen Administrator um ein neues Passwort.") }
     let keys: Vec<_> = creds.iter().map(|c| c.passkey.0.clone()).collect();
     let (options, state) = app.webauthn.start_passkey_authentication(&keys).map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, format!("Passkey-Start fehlgeschlagen: {e}")))?;
     let id = Uuid::new_v4().to_string();

@@ -214,7 +214,11 @@ impl<T: Transport> Engine<T> {
         if track_lock {
             let locked = self.platform.is_locked();
             if locked != self.locked {
-                self.emit(if locked { "lock" } else { "unlock" }, now, None, None);
+                let ok = self.emit(if locked { "lock" } else { "unlock" }, now, None, None);
+                // Das erste echte Entsperren nach einem Hintergrund-Aufwachen: jetzt darf das Tracking im Zeitfenster starten
+                if !locked && !ok {
+                    self.emit("tick", now, None, None);
+                }
                 self.locked = locked;
             }
         }
@@ -289,6 +293,17 @@ impl<T: Transport> Engine<T> {
         self.flush(now, true);
     }
 
+    /// Ein Beenden („quit“) oder Herunterfahren („shutdown“) der letzten Sitzung nachtragen, das nicht mehr erfasst werden konnte
+    /// (z. B. weil beim Herunterfahren ein Netzwerkaufruf die Engine hielt). Wirkt nur, wenn der lokale Tag noch läuft.
+    pub fn recover_finish(&mut self, at: DateTime<Utc>, kind: &str) {
+        if !matches!(kind, "quit" | "shutdown") {
+            return;
+        }
+        // Läuft der Tag schon nicht mehr (Ereignis kam doch an), tut `emit` nichts
+        self.emit(kind, at, None, None);
+        self.save();
+    }
+
     /// Companion wird beendet („quit“) oder der Rechner fährt herunter („shutdown“). Danach reagiert die Engine nicht mehr.
     pub fn finish(&mut self, now: DateTime<Utc>, kind: &str) {
         self.clock = now;
@@ -318,10 +333,15 @@ impl<T: Transport> Engine<T> {
                 self.state.day_off = false;
             }
         }
-        let p = self.policy(self.state.day_off, date, now);
+        // Bei gesperrtem Bildschirm startet das Tracking nicht von selbst: erst nach dem ersten Entsperren
+        let locked_now = self.platform.is_locked();
+        let mut p = self.policy(self.state.day_off, date, now);
+        if locked_now {
+            p.auto_from = None;
+        }
         match apply_event(&mut self.day, kind, now, os, &p, app.as_deref(), answer.as_deref()) {
             Ok(()) => {
-                self.outbox.push(kind, at, app, Some(self.platform.os().to_string()), answer);
+                self.outbox.push(kind, at, app, Some(self.platform.os().to_string()), answer, locked_now);
                 self.save();
                 true
             }
@@ -544,6 +564,47 @@ mod tests {
         w.lock().unwrap().app = Some("Code".into());
         e.tick(t(6));
         assert_eq!(kinds(&w), ["boot", "app:Code", "lock", "unlock"]);
+    }
+
+    /// Ein Mac, der nie herunterfährt, wacht im Hintergrund auf: im Startzeitfenster darf das Tracking nicht beginnen,
+    /// solange der Bildschirm gesperrt ist, sondern erst nach dem ersten echten Entsperren.
+    #[test]
+    fn a_locked_computer_does_not_start_the_tracking_by_itself() {
+        let (mut e, w) = setup();
+        w.lock().unwrap().locked = true;
+        e.start(t(0), false); // 09:00 Ortszeit, im Zeitfenster
+        e.tick(t(2));
+        assert_ne!(e.view().state.track, "running", "gesperrt: kein Start von selbst");
+        // auch die Lebenszeichen starten nichts, und auf dem Server schon gar nicht
+        e.tick(t(40));
+        e.tick(t(80));
+        assert_ne!(e.view().state.track, "running");
+        assert!(w.lock().unwrap().received.iter().filter(|x| x.kind != "answer").all(|x| x.locked), "alle Ereignisse tragen den Sperrzustand");
+        // erstes Entsperren: jetzt startet das Tracking
+        w.lock().unwrap().locked = false;
+        e.tick(t(100));
+        assert_eq!(e.view().state.track, "running");
+        assert!(w.lock().unwrap().received.iter().any(|x| x.kind == "tick" && !x.locked));
+    }
+
+    /// Windows: Beim Herunterfahren hielt ein Netzwerkaufruf die Engine, das Ereignis ging verloren. Der Marker trägt es beim
+    /// nächsten Start mit dem echten Zeitpunkt nach.
+    #[test]
+    fn a_missed_shutdown_is_recovered_at_the_next_start() {
+        let (mut e, w) = setup();
+        e.start(t(0), false);
+        e.tick(t(2));
+        e.recover_finish(t(600), "shutdown");
+        assert_eq!(e.view().state.track, "stopped");
+        e.recover_finish(t(601), "shutdown"); // doppelt: nichts passiert
+        e.start(t(4000), false);
+        assert_eq!(kinds(&w), ["boot", "app:Code", "shutdown", "boot"]);
+        assert_eq!(e.view().state.track, "running");
+        let got = w.lock().unwrap().received.iter().find(|x| x.kind == "shutdown").map(|x| x.at);
+        assert_eq!(got, Some(t(600)));
+        // unbekannte Art wird ignoriert
+        e.recover_finish(t(5000), "irgendwas");
+        assert_eq!(e.view().state.track, "running");
     }
 
     #[test]

@@ -64,18 +64,26 @@ fn ui_state(sh: &Shared) -> UiState {
 
 fn start_engine(sh: &Shared, creds: &Credentials, manual: bool) {
     let mut e = Engine::new(tickly_platform::system(), HttpTransport::new(creds), Outbox::open(sh.store.outbox_path())).with_store(sh.store.agent_path());
+    // Beenden/Herunterfahren der letzten Sitzung, das nicht mehr erfasst werden konnte: zuerst nachtragen, dann den Start melden
+    if let Some((kind, at)) = sh.store.take_finish() {
+        e.recover_finish(at, &kind);
+    }
     e.start(Utc::now(), manual);
     *sh.engine.lock().unwrap() = Some(e);
 }
 
 /// Sendet beim Herunterfahren das Ereignis, bevor das System den Prozess beendet.
 fn finish(sh: &Shared, kind: &str) {
-    // Läuft gerade ein Tick (Netzwerk), kurz warten statt hängen zu bleiben
+    let at = Utc::now();
+    // Zuerst den Marker sichern: Hält gerade ein Tick (Netzwerk) die Engine, kommt das Ereignis nicht mehr rechtzeitig hinein.
+    // Der Marker trägt es beim nächsten Start nach (mit dem echten Zeitpunkt), das Tracking endet also trotzdem zur richtigen Zeit.
+    sh.store.mark_finish(kind, at);
     for _ in 0..60 {
         if let Ok(mut g) = sh.engine.try_lock() {
             if let Some(e) = g.as_mut() {
-                e.finish(Utc::now(), kind);
+                e.finish(at, kind);
             }
+            sh.store.clear_finish();
             return;
         }
         std::thread::sleep(Duration::from_millis(50));

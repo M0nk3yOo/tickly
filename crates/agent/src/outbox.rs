@@ -45,14 +45,14 @@ impl Outbox {
         }
     }
 
-    pub fn push(&mut self, kind: &str, at: DateTime<Utc>, app: Option<String>, os: Option<String>, answer: Option<String>) {
+    pub fn push(&mut self, kind: &str, at: DateTime<Utc>, app: Option<String>, os: Option<String>, answer: Option<String>, locked: bool) {
         // Lebenszeichen ersetzen sich gegenseitig, damit nach langem Netzausfall nicht tausende anfallen.
         if kind == "beat" && self.d.events.back().is_some_and(|e| e.kind == "beat") {
             self.d.events.pop_back();
         }
         let seq = self.d.next_seq;
         self.d.next_seq += 1;
-        self.d.events.push_back(QueuedEvent { seq, kind: kind.into(), at, app, os, answer });
+        self.d.events.push_back(QueuedEvent { seq, kind: kind.into(), at, app, os, answer, locked });
         self.save();
     }
 

@@ -2584,3 +2584,47 @@ async fn the_day_remembers_the_os_and_the_setup_time_counts() {
     if now < 1400.0 { assert!((ended - now - 10.0).abs() < 1.5, "{day}"); }
     assert!(start <= ended);
 }
+
+#[tokio::test]
+async fn a_passkey_registration_with_email_confirmation_gets_its_passkey_after_the_link() {
+    let (port, inbox) = fake_smtp().await;
+    let base = Client::new().await;
+    let mut admin = base.fresh().from_ip("203.0.113.10");
+    admin.login_andre().await;
+    assert_eq!(smtp_settings(&mut admin, port, true).await, StatusCode::OK);
+    let mut reg = admin.get("/api/snapshot?now=872").await.1["reg"].clone();
+    reg["verifyEmail"] = json!(true);
+    reg["approval"] = json!(true);
+    assert_eq!(admin.put("/api/admin/registration", reg).await.0, StatusCode::OK);
+    // „Direkt mit Passkey“: ohne Passwort, es gibt noch keine Sitzung, der Passkey lässt sich noch nicht anlegen
+    let mut anon = base.fresh().from_ip("198.51.100.30");
+    let (st, r) = anon.post("/api/auth/register", json!({"name": "Nur Passkey", "email": "nur.passkey@example.de"})).await;
+    assert_eq!((st, r["status"].clone()), (StatusCode::OK, json!("verify")));
+    assert_eq!(anon.post("/api/passkey/register/start", json!({})).await.0, StatusCode::UNAUTHORIZED);
+    let mails = wait_mails(&inbox, 1).await;
+    let token = token_in(&mails[0]);
+    // Der Bestätigungslink öffnet eine eingeschränkte Sitzung, in der der Passkey eingerichtet wird
+    let (st, r) = anon.post("/api/auth/verify", json!({"token": token})).await;
+    assert_eq!((st, r["status"].clone(), r["needsPasskey"].clone()), (StatusCode::OK, json!("pending"), json!(true)), "{r}");
+    let origin = Url::parse("http://localhost:3000").unwrap();
+    let mut a = WebauthnAuthenticator::new(SoftToken::new(true).unwrap().0);
+    let (st, start) = anon.post("/api/passkey/register/start", json!({})).await;
+    assert_eq!(st, StatusCode::OK, "{start}");
+    let cred = a.do_registration(origin, serde_json::from_value(start["options"].clone()).unwrap()).unwrap();
+    assert_eq!(anon.post("/api/passkey/register/finish", json!({"id": start["id"], "credential": cred})).await.0, StatusCode::OK);
+    // Die Sitzung bleibt eingeschränkt: bis zur Freigabe kein Zugriff auf die Daten
+    assert_eq!(anon.get("/api/snapshot?now=872").await.0, StatusCode::FORBIDDEN);
+    // Nach der Freigabe klappt die Anmeldung mit dem Passkey
+    let uid = admin.get("/api/snapshot?now=872").await.1["users"].as_array().unwrap().iter().find(|u| u["email"] == "nur.passkey@example.de").unwrap()["id"].as_str().unwrap().to_string();
+    assert_eq!(admin.post(&format!("/api/admin/users/{uid}/status"), json!({"status": "active"})).await.0, StatusCode::OK);
+    let (st, start) = base.fresh().from_ip("198.51.100.31").post("/api/passkey/login/start", json!({"email": "nur.passkey@example.de"})).await;
+    assert_eq!(st, StatusCode::OK, "{start}");
+    // Ein Konto mit Passwort bekommt auch weiterhin keine Sitzung vor der Freigabe
+    let mut pw = base.fresh().from_ip("198.51.100.32");
+    pw.post("/api/auth/register", json!({"name": "Mit Passwort", "email": "mit.passwort@example.de", "password": "Ein-Langes-Passwort-42", "questions": qs()})).await;
+    let mut mails = wait_mails(&inbox, 5).await;
+    mails.retain(|m| m.contains("Bitte bestätige deine E-Mail-Adresse") && m.contains("mit.passwort@example.de"));
+    let (_, r) = pw.post("/api/auth/verify", json!({"token": token_in(&mails[0])})).await;
+    assert!(r["needsPasskey"].is_null() || r["needsPasskey"] == json!(false), "{r}");
+    assert_eq!(pw.get("/api/snapshot?now=872").await.0, StatusCode::UNAUTHORIZED);
+}
