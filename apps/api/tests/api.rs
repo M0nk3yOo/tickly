@@ -42,6 +42,7 @@ fn config(database_url: String, demo: bool) -> Config {
         backup_dir: None,
         secrets: tickly_api::secrets::Secrets::default(),
         origin_secret: None,
+        update: tickly_api::update::UpdateCfg::off(),
         admin: if demo { None } else { Some(("chef@example.de".into(), "Chefin".into(), "Sehr-Langes-Passwort-42".into())) },
     }
 }
@@ -2627,4 +2628,245 @@ async fn a_passkey_registration_with_email_confirmation_gets_its_passkey_after_t
     let (_, r) = pw.post("/api/auth/verify", json!({"token": token_in(&mails[0])})).await;
     assert!(r["needsPasskey"].is_null() || r["needsPasskey"] == json!(false), "{r}");
     assert_eq!(pw.get("/api/snapshot?now=872").await.0, StatusCode::UNAUTHORIZED);
+}
+
+/* ---------- Update-Prüfung gegen einen Fake-GitHub-Server ---------- */
+
+struct FakeGh {
+    base: String,
+    hits: Arc<std::sync::atomic::AtomicUsize>,
+    /// Antwort: (Status, Rumpf)
+    reply: Arc<std::sync::Mutex<(u16, String)>>,
+    /// Die Anfragen samt Headern, zum Prüfen dessen, was gesendet wird
+    seen: Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+fn release_json(tag: &str) -> String {
+    json!({ "tag_name": format!("v{tag}"), "html_url": format!("http://gh.test/r/v{tag}"), "body": "- Neu: Dinge", "draft": false, "prerelease": false, "assets": [
+        { "name": "SHA256SUMS", "browser_download_url": "http://gh.test/d/SHA256SUMS", "size": 100 },
+        { "name": format!("Tickly.Companion_{tag}_x64_en-US.msi"), "browser_download_url": format!("http://gh.test/d/{tag}.msi"), "size": 3000 },
+        { "name": format!("Tickly.Companion_{tag}_x64-setup.exe"), "browser_download_url": format!("http://gh.test/d/{tag}.exe"), "size": 2000 },
+        { "name": format!("Tickly.Companion_{tag}_aarch64.dmg"), "browser_download_url": format!("http://gh.test/d/{tag}.dmg"), "size": 4000 } ] }).to_string()
+}
+
+async fn fake_github(tag: &str) -> FakeGh {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let gh = FakeGh { base, hits: Default::default(), reply: Arc::new(std::sync::Mutex::new((200, release_json(tag)))), seen: Default::default() };
+    let (hits, reply, seen) = (gh.hits.clone(), gh.reply.clone(), gh.seen.clone());
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut sock, _)) = listener.accept().await else { return };
+            let (hits, reply, seen) = (hits.clone(), reply.clone(), seen.clone());
+            tokio::spawn(async move {
+                let mut buf = vec![0u8; 8192];
+                let mut n = 0;
+                while !buf[..n].windows(4).any(|w| w == b"\r\n\r\n") {
+                    let r = sock.read(&mut buf[n..]).await.unwrap_or(0);
+                    if r == 0 { return }
+                    n += r;
+                }
+                hits.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                seen.lock().unwrap().push(String::from_utf8_lossy(&buf[..n]).to_string());
+                let (code, body) = reply.lock().unwrap().clone();
+                let _ = sock.write_all(format!("HTTP/1.1 {code} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await;
+            });
+        }
+    });
+    gh
+}
+
+impl FakeGh {
+    fn hits(&self) -> usize { self.hits.load(std::sync::atomic::Ordering::SeqCst) }
+    fn set(&self, code: u16, body: String) { *self.reply.lock().unwrap() = (code, body); }
+    fn cfg(&self, enabled: bool) -> tickly_api::update::UpdateCfg {
+        tickly_api::update::UpdateCfg { env_enabled: enabled, repo: "o/tickly".into(), api_base: self.base.clone() }
+    }
+}
+
+/// Server auf einer frischen Datenbank mit Update-Einstellung (Echtbetrieb oder Demo).
+async fn with_update(demo: bool, upd: tickly_api::update::UpdateCfg) -> Client {
+    let name = fresh_db(demo).await;
+    let url = url_for(&name);
+    let pool = db::connect(&url).await.unwrap();
+    let mut cfg = config(url, demo);
+    cfg.update = upd;
+    let app = Arc::new(App::new(cfg, pool));
+    Client { router: api::router(app.clone()), cookie: None, app, headers: vec![], peer: None }
+}
+
+#[tokio::test]
+async fn update_check_compares_versions_caches_and_shows_admins_only() {
+    let gh = fake_github("99.0.0").await;
+    let mut c = with_update(false, gh.cfg(true)).await;
+    assert_eq!(c.login("chef@example.de", "Sehr-Langes-Passwort-42").await, StatusCode::OK);
+    // Noch nie geprüft: nichts bekannt, nichts im Netz
+    let (_, s) = c.get("/api/snapshot").await;
+    assert_eq!((s["update"]["latest"].clone(), s["update"]["newer"].clone(), s["update"]["enabled"].clone(), s["download"].clone()), (Value::Null, json!(false), json!(true), Value::Null));
+    assert_eq!(gh.hits(), 0);
+
+    // Jetzt prüfen
+    let (st, u) = c.post("/api/admin/update/check", json!({})).await;
+    assert_eq!(st, StatusCode::OK, "{u}");
+    assert_eq!((u["latest"].clone(), u["newer"].clone(), u["installed"].clone()), (json!("99.0.0"), json!(true), json!(env!("CARGO_PKG_VERSION"))));
+    assert_eq!(u["url"], "http://gh.test/r/v99.0.0");
+    assert!(u["notes"].as_str().unwrap().contains("Neu: Dinge") && u["checkedAt"].is_string() && u["error"].is_null());
+    assert_eq!(gh.hits(), 1);
+    {
+        let seen = gh.seen.lock().unwrap();
+        let rq = seen[0].to_lowercase();
+        assert!(rq.starts_with("get /repos/o/tickly/releases/latest "), "{rq}");
+        assert!(rq.contains(&format!("user-agent: tickly-server/{}", env!("CARGO_PKG_VERSION"))), "{rq}");
+        assert!(!rq.contains("cookie") && !rq.contains("authorization"), "keine Benutzerdaten: {rq}");
+    }
+
+    // Snapshot: Administratoren sehen die Server-Information, alle die Installer; Windows bevorzugt die .exe
+    let (_, s) = c.get("/api/snapshot").await;
+    assert_eq!((s["update"]["latest"].clone(), s["update"]["newer"].clone()), (json!("99.0.0"), json!(true)));
+    assert_eq!(s["download"]["version"], "99.0.0");
+    assert_eq!((s["download"]["win"]["url"].clone(), s["download"]["win"]["size"].clone()), (json!("http://gh.test/d/99.0.0.exe"), json!(2000)));
+    assert_eq!(s["download"]["mac"]["url"], "http://gh.test/d/99.0.0.dmg");
+
+    // Normaler Benutzer: keine Server-Information, aber die Installer; die Verwaltungsrouten sind verboten
+    assert_eq!(c.post("/api/admin/users", json!({"name": "Normal", "email": "normal@example.de", "role": "user", "week": 40, "direct": true, "password": "Ein-Langes-Passwort-42"})).await.0, StatusCode::OK);
+    sqlx::query("UPDATE users SET must_change_pw = false WHERE email = 'normal@example.de'").execute(&c.app.pool).await.unwrap();
+    let mut u = c.fresh();
+    assert_eq!(u.login("normal@example.de", "Ein-Langes-Passwort-42").await, StatusCode::OK);
+    let (st, s) = u.get("/api/snapshot").await;
+    assert_eq!(st, StatusCode::OK, "{s}");
+    assert!(s.get("update").is_none(), "{s}");
+    assert_eq!(s["download"]["mac"]["name"], "Tickly.Companion_99.0.0_aarch64.dmg");
+    assert_eq!(u.get("/api/admin/update").await.0, StatusCode::FORBIDDEN);
+    assert_eq!(u.post("/api/admin/update/check", json!({})).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(u.put("/api/admin/update", json!({"enabled": false})).await.0, StatusCode::FORBIDDEN);
+
+    // Zwischenspeicher: ohne Zwang keine zweite Abfrage innerhalb von 6 Stunden, auch nicht nach einem Neustart
+    tickly_api::update::refresh(&c.app, false).await;
+    assert_eq!(gh.hits(), 1);
+    let mut cfg2 = config(c.app.cfg.database_url.clone(), false);
+    cfg2.update = gh.cfg(true);
+    let restarted = App::new(cfg2, db::connect(&c.app.cfg.database_url).await.unwrap());
+    tickly_api::update::refresh(&restarted, false).await;
+    assert_eq!(gh.hits(), 1, "gespeichert in der Datenbank");
+    // älter als 6 Stunden: wieder fällig (neue Version erscheint)
+    sqlx::query("UPDATE app_settings SET value = jsonb_set(value, '{attempted_at}', to_jsonb(to_char(now() - interval '7 hours', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'))) WHERE key = 'update_info'").execute(&c.app.pool).await.unwrap();
+    gh.set(200, release_json("99.1.0"));
+    tickly_api::update::refresh(&c.app, false).await;
+    assert_eq!(gh.hits(), 2);
+    assert_eq!(c.get("/api/admin/update").await.1["latest"], "99.1.0");
+}
+
+#[tokio::test]
+async fn update_check_survives_errors_and_equal_or_older_versions() {
+    let gh = fake_github("0.0.1").await;
+    let mut c = with_update(false, gh.cfg(true)).await;
+    assert_eq!(c.login("chef@example.de", "Sehr-Langes-Passwort-42").await, StatusCode::OK);
+    // Ältere Version bei GitHub: kein Hinweis
+    let u = c.post("/api/admin/update/check", json!({})).await.1;
+    assert_eq!((u["latest"].clone(), u["newer"].clone()), (json!("0.0.1"), json!(false)));
+    // dieselbe Version: ebenfalls kein Hinweis
+    gh.set(200, release_json(env!("CARGO_PKG_VERSION")));
+    assert_eq!(c.post("/api/admin/update/check", json!({})).await.1["newer"], false);
+    // Fehler (Serverfehler, kaputtes JSON, unlesbare Version): Meldung merken, letzte gute Information behalten, nie ein Fehlerstatus
+    for (code, body) in [(500, "boom".to_string()), (200, "kein json".to_string()), (200, json!({"tag_name": "nightly"}).to_string())] {
+        gh.set(code, body);
+        let (st, u) = c.post("/api/admin/update/check", json!({})).await;
+        assert_eq!(st, StatusCode::OK, "{u}");
+        assert!(u["error"].is_string(), "{u}");
+        assert_eq!(u["latest"], env!("CARGO_PKG_VERSION"));
+    }
+    // nach einem Fehler wird frühestens in einer Stunde erneut gefragt
+    let hits = gh.hits();
+    tickly_api::update::refresh(&c.app, false).await;
+    assert_eq!(gh.hits(), hits);
+    assert_eq!(c.get("/api/snapshot").await.0, StatusCode::OK);
+    // Server nicht erreichbar: nur ein Fehler im Ergebnis
+    let down = with_update(false, tickly_api::update::UpdateCfg { env_enabled: true, repo: "o/tickly".into(), api_base: "http://127.0.0.1:1".into() }).await;
+    let i = tickly_api::update::refresh(&down.app, true).await;
+    assert!(i.error.is_some() && i.latest.is_empty());
+}
+
+#[tokio::test]
+async fn update_check_can_be_turned_off_and_never_runs_in_demo() {
+    let gh = fake_github("99.0.0").await;
+    let mut c = with_update(false, gh.cfg(true)).await;
+    assert_eq!(c.login("chef@example.de", "Sehr-Langes-Passwort-42").await, StatusCode::OK);
+    assert_eq!(c.post("/api/admin/update/check", json!({})).await.0, StatusCode::OK);
+    assert_eq!(gh.hits(), 1);
+    // Schalter der Verwaltung: aus → keine Abfrage, keine Hinweise, „Jetzt prüfen“ abgelehnt
+    let u = c.put("/api/admin/update", json!({"enabled": false})).await.1;
+    assert_eq!((u["enabled"].clone(), u["setting"].clone(), u["latest"].clone()), (json!(false), json!(false), Value::Null));
+    assert_eq!(c.post("/api/admin/update/check", json!({})).await.0, StatusCode::BAD_REQUEST);
+    tickly_api::update::refresh(&c.app, true).await;
+    assert_eq!(gh.hits(), 1);
+    let s = c.get("/api/snapshot").await.1;
+    assert!(s["download"].is_null() && s["update"]["newer"] == false);
+    let log = c.get("/api/admin/log?kind=admin").await.1.to_string();
+    assert!(log.contains("Suche nach Updates ausgeschaltet"), "{log}");
+    // wieder an
+    assert_eq!(c.put("/api/admin/update", json!({"enabled": true})).await.1["enabled"], true);
+    assert_eq!(c.post("/api/admin/update/check", json!({})).await.0, StatusCode::OK);
+    assert_eq!(gh.hits(), 2);
+
+    // Umgebungsvariable hat Vorrang (TICKLY_UPDATE_CHECK=0)
+    let mut env_off = with_update(false, gh.cfg(false)).await;
+    assert_eq!(env_off.login("chef@example.de", "Sehr-Langes-Passwort-42").await, StatusCode::OK);
+    let u = env_off.get("/api/admin/update").await.1;
+    assert_eq!((u["enabled"].clone(), u["envOff"].clone(), u["setting"].clone()), (json!(false), json!(true), json!(true)));
+    assert_eq!(env_off.put("/api/admin/update", json!({"enabled": true})).await.1["enabled"], false);
+    assert_eq!(env_off.post("/api/admin/update/check", json!({})).await.0, StatusCode::BAD_REQUEST);
+    tickly_api::update::refresh(&env_off.app, true).await;
+    assert_eq!(gh.hits(), 2);
+
+    // Demo-Modus: nie ins Netz, auch wenn alles eingeschaltet ist
+    let mut demo = with_update(true, gh.cfg(true)).await;
+    demo.login_andre().await;
+    assert_eq!(demo.post("/api/admin/update/check", json!({})).await.0, StatusCode::BAD_REQUEST);
+    tickly_api::update::refresh(&demo.app, true).await;
+    assert_eq!(gh.hits(), 2);
+    let u = demo.get("/api/admin/update").await.1;
+    assert_eq!((u["enabled"].clone(), u["demo"].clone()), (json!(false), json!(true)));
+}
+
+/// Koppelt ein Gerät für den angemeldeten Benutzer und gibt (Gerät ohne Sitzung, Token) zurück.
+async fn pair_device(web: &mut Client, os: &str, version: &str) -> (Client, String) {
+    let code = web.post("/api/devices/pair-code", json!({})).await.1["code"].as_str().unwrap().to_string();
+    let mut dev = web.fresh();
+    let r = dev.post("/api/device/pair", json!({"code": code, "name": format!("Gerät {os}"), "os": os, "version": version})).await.1;
+    (dev, r["token"].as_str().unwrap().to_string())
+}
+
+#[tokio::test]
+async fn device_state_carries_update_only_for_outdated_companions() {
+    let gh = fake_github("0.9.30").await;
+    let mut web = with_update(false, gh.cfg(true)).await;
+    assert_eq!(web.login("chef@example.de", "Sehr-Langes-Passwort-42").await, StatusCode::OK);
+    let (mut mac, mac_t) = pair_device(&mut web, "macos", "0.9.5").await;
+    let (mut win, win_t) = pair_device(&mut web, "windows", "0.9.18").await;
+    // Noch nichts geprüft: kein Hinweis
+    assert!(mac.call_h(Method::GET, "/api/device/state", None, Some(&mac_t)).await.1["update"].is_null());
+    assert_eq!(web.post("/api/admin/update/check", json!({})).await.0, StatusCode::OK);
+    // 0.9.5 < 0.9.30: Hinweis mit Installer für das eigene System (macOS: .dmg, Windows: .exe)
+    let st = mac.call_h(Method::GET, "/api/device/state", None, Some(&mac_t)).await.1;
+    assert_eq!(st["update"], json!({"latest": "0.9.30", "notes": "- Neu: Dinge", "url": "http://gh.test/r/v0.9.30", "download": "http://gh.test/d/0.9.30.dmg", "size": 4000}));
+    let st = win.call_h(Method::GET, "/api/device/state", None, Some(&win_t)).await.1;
+    assert_eq!((st["update"]["latest"].clone(), st["update"]["download"].clone()), (json!("0.9.30"), json!("http://gh.test/d/0.9.30.exe")));
+    // auch in der Antwort auf Ereignisse
+    let at = chrono::Utc::now().to_rfc3339();
+    let r = mac.call_h(Method::POST, "/api/device/events", Some(json!({"events": [{"seq": 1, "kind": "boot", "at": at, "os": "macos"}]})), Some(&mac_t)).await.1;
+    assert_eq!(r["state"]["update"]["latest"], "0.9.30");
+    // Aktualisierter Companion (meldet 0.9.30 im User-Agent): kein Hinweis mehr
+    mac.headers = vec![("user-agent".into(), "tickly-companion/0.9.30".into())];
+    assert!(mac.call_h(Method::GET, "/api/device/state", None, Some(&mac_t)).await.1["update"].is_null());
+    // 0.9.9 ist kleiner als 0.9.30 (nicht als Zeichenkette verglichen)
+    mac.headers = vec![("user-agent".into(), "tickly-companion/0.9.9".into())];
+    assert_eq!(mac.call_h(Method::GET, "/api/device/state", None, Some(&mac_t)).await.1["update"]["latest"], "0.9.30");
+    // Die Administration zeigt „veraltet“ anhand derselben Quelle
+    let devs = web.get("/api/admin/sessions").await.1;
+    assert_eq!(devs["latestVersion"], "0.9.30");
+    assert!(devs["devices"].as_array().unwrap().iter().all(|d| d["outdated"] == true), "{devs}");
+    // Ausgeschaltet: kein Hinweis mehr
+    web.put("/api/admin/update", json!({"enabled": false})).await;
+    assert!(win.call_h(Method::GET, "/api/device/state", None, Some(&win_t)).await.1["update"].is_null());
 }

@@ -66,7 +66,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/admin/users/{id}", put(admin_update).delete(admin_delete))
         .route("/admin/users/{id}/status", post(admin_status))
         .route("/admin/users/{id}/reset-passkeys", post(admin_reset_passkeys));
-    let api = api.merge(crate::backup::routes()).merge(crate::mfa::routes()).merge(crate::secq::routes()).merge(crate::netsec::routes()).merge(crate::sessions::routes()).merge(crate::edit::routes()).merge(crate::mail::routes());
+    let api = api.merge(crate::backup::routes()).merge(crate::mfa::routes()).merge(crate::secq::routes()).merge(crate::netsec::routes()).merge(crate::sessions::routes()).merge(crate::edit::routes()).merge(crate::mail::routes()).merge(crate::update::routes());
     Router::new()
         .nest("/api", api)
         .fallback_service(web)
@@ -500,6 +500,7 @@ async fn snapshot_json(app: &App, u: &UserRow, today: NaiveDate, now: f64) -> Re
     v["secQ"] = crate::secq::status(app, u).await?;
     v["startBalSet"] = json!(u.start_bal_set);
     v["serverVersion"] = json!(env!("CARGO_PKG_VERSION"));
+    v["download"] = crate::update::download_json(app).await;
     v["totp"] = json!({ "enabled": u.totp_enabled, "recoveryLeft": if u.totp_enabled { crate::mfa::recovery_left(app, &u.id).await? } else { 0 } });
     if u.role == "admin" {
         let labels = today_labels(app, today).await?;
@@ -515,6 +516,7 @@ async fn snapshot_json(app: &App, u: &UserRow, today: NaiveDate, now: f64) -> Re
                 "today": labels.get(&x.id).cloned().unwrap_or_else(|| "none".into()),
             }));
         }
+        v["update"] = crate::update::admin_json(app).await;
         v["reg"] = serde_json::to_value(&reg).unwrap();
         v["users"] = Value::Array(users);
     }

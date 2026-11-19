@@ -41,6 +41,10 @@ Läuft das Tracking über Mitternacht weiter, prüft Tickly nach einer Stunde (a
 
 Bis du antwortest, läuft die Zeit weiter. Nichts wird von selbst beendet.
 
+### Companion herunterladen
+
+Hast du noch kein Gerät gekoppelt, schlägt dir ein Hinweis oben auf der Übersicht und der Seite **Companion-App** vor: *Zeiterfassung automatisch: Lade den Companion für macOS/Windows herunter und koppele dein Gerät.* Mit **Für macOS laden** / **Für Windows laden** (dein System ist hervorgehoben) holst du den Installer, **Gerät koppeln** führt zur Kopplung. Das Kreuz blendet den Hinweis aus; nach 30 Tagen oder über den Link auf der Seite Companion-App erscheint er wieder, solange kein Gerät gekoppelt ist. Gibt es eine neue Companion-Version, zeigt dir die App selbst **Update verfügbar** mit Download.
+
 ### Companion und Weboberfläche zusammen
 
 - **Pausieren und Beenden im Web** gilt auch für einen laufenden Companion: Er holt den Zustand alle paar Sekunden vom Server und zeigt danach ebenfalls „Pausiert“ bzw. „Beendet“. Fortsetzen geht wie sonst im Companion oder im Web.

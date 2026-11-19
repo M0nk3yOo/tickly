@@ -64,12 +64,13 @@ async fn auth_device(app: &App, h: &HeaderMap) -> Res<(DeviceRow, UserRow)> {
     let Some(tok) = tok.filter(|t| !t.is_empty()) else { return unauthorized("Gerät nicht gekoppelt") };
     let dev: Option<DeviceRow> = sqlx::query_as("SELECT id, user_id, name, os, version, last_seq, created_at, last_seen_at, auto_track FROM devices WHERE token_hash = $1 AND revoked_at IS NULL")
         .bind(hash_token(tok)).fetch_optional(&app.pool).await?;
-    let Some(dev) = dev else { return unauthorized("Kopplung wurde aufgehoben – bitte das Gerät neu koppeln") };
+    let Some(mut dev) = dev else { return unauthorized("Kopplung wurde aufgehoben – bitte das Gerät neu koppeln") };
     let Some(u) = db::user_by_id(&app.pool, &dev.user_id).await? else { return unauthorized("Benutzer existiert nicht mehr") };
     if u.status != "active" { return forbidden("Konto ist nicht aktiv") }
     // Die App meldet ihre Version im User-Agent („tickly-companion/0.2.0“); so sieht man veraltete Geräte
     if let Some(v) = h.get(header::USER_AGENT).and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("tickly-companion/")).map(|v| v.split_whitespace().next().unwrap_or("").to_string()).filter(|v| !v.is_empty() && v != &dev.version) {
-        let _ = sqlx::query("UPDATE devices SET version = $2 WHERE id = $1").bind(dev.id).bind(v).execute(&app.pool).await;
+        let _ = sqlx::query("UPDATE devices SET version = $2 WHERE id = $1").bind(dev.id).bind(&v).execute(&app.pool).await;
+        dev.version = v;
     }
     Ok((dev, u))
 }
@@ -192,14 +193,14 @@ pub async fn device_events(State(app): St, h: HeaderMap, Json(r): Json<EventsReq
         sqlx::query("INSERT INTO device_clash (user_id, day, first, second) VALUES ($1, $2, $3, $4) ON CONFLICT (user_id) DO UPDATE SET day = $2, first = $3, second = $4, at = now(), ack = false")
             .bind(&u.id).bind(today).bind(first).bind(dev.id).execute(&app.pool).await?;
     }
-    let state = state_json(&app, &u, last, dev.auto_track).await?;
+    let state = state_json(&app, &u, last, dev.auto_track, &dev).await?;
     Ok(Json(json!({ "ok": true, "lastSeq": last, "results": results, "state": state })))
 }
 
 pub async fn device_state(State(app): St, h: HeaderMap) -> Res<Json<Value>> {
     let (dev, u) = auth_device(&app, &h).await?;
     sqlx::query("UPDATE devices SET last_seen_at = now() WHERE id = $1").bind(dev.id).execute(&app.pool).await?;
-    Ok(Json(state_json(&app, &u, dev.last_seq, dev.auto_track).await?))
+    Ok(Json(state_json(&app, &u, dev.last_seq, dev.auto_track, &dev).await?))
 }
 
 #[derive(Deserialize)]
@@ -210,7 +211,7 @@ pub struct AutoReq { auto_track: bool }
 pub async fn device_prefs(State(app): St, h: HeaderMap, Json(r): Json<AutoReq>) -> Res<Json<Value>> {
     let (dev, u) = auth_device(&app, &h).await?;
     sqlx::query("UPDATE devices SET auto_track = $2, last_seen_at = now() WHERE id = $1").bind(dev.id).bind(r.auto_track).execute(&app.pool).await?;
-    Ok(Json(state_json(&app, &u, dev.last_seq, r.auto_track).await?))
+    Ok(Json(state_json(&app, &u, dev.last_seq, r.auto_track, &dev).await?))
 }
 
 /// Dasselbe aus der Weboberfläche für ein gekoppeltes Gerät des Benutzers.
@@ -222,7 +223,7 @@ pub async fn set_auto(State(app): St, h: HeaderMap, Path(id): Path<Uuid>, Json(r
 }
 
 /// Was der Companion anzeigen und beachten muss.
-async fn state_json(app: &App, u: &UserRow, last_seq: i64, auto: bool) -> Res<Value> {
+async fn state_json(app: &App, u: &UserRow, last_seq: i64, auto: bool, dev: &DeviceRow) -> Res<Value> {
     let (today, now) = app.clock(None);
     let c = db::Calc::load(app, u, today, now).await?;
     let ap = c.absences.clone();
@@ -230,6 +231,7 @@ async fn state_json(app: &App, u: &UserRow, last_seq: i64, auto: bool) -> Res<Va
     let mfa = db::mfa_status(&app.pool, u, &db::reg_policy(&app.pool).await?).await?.json();
     let p = track_policy(&c.settings, &ap, today, now);
     let clash = clash(app, &u.id, today).await?;
+    let update = crate::update::for_device(app, &dev.os, &dev.version).await;
     Ok(c.with(|c| {
         let t = day_stat(c, c.today);
         let d = c.day;
@@ -248,6 +250,7 @@ async fn state_json(app: &App, u: &UserRow, last_seq: i64, auto: bool) -> Res<Va
             "windowActive": auto && p.auto_from.is_some(),
             "nightCheck": night_check(c).map(|n| json!({ "since": n.since, "hours": n.hours })),
             "deviceClash": clash.filter(|_| d.tracking),
+            "update": update,
             "policy": { "trackApps": s.track_apps, "trackLock": s.track_lock, "trackTitles": s.track_titles, "excluded": s.excluded, "idle": s.idle, "autoTrack": s.auto_track, "deviceAuto": auto },
         })
     }))

@@ -13,6 +13,8 @@ Die Installer stehen bei den **Release-Dateien** des Projekts (GitHub → *Relea
 | Windows | `Tickly.Companion_<Version>_x64-setup.exe` (bis 0.9.3 zusätzlich als `.msi`) |
 | macOS | `Tickly.Companion_<Version>_aarch64.dmg` (Apple Silicon; Intel-Macs werden ab 0.9.4 nicht mehr unterstützt, die letzte Version für sie ist 0.9.3) |
 
+Die Weboberfläche verlinkt die Installer: Hast du noch kein Gerät gekoppelt, zeigt die **Übersicht** einen Hinweis mit den Knöpfen *Für macOS laden* / *Für Windows laden* (dein System ist hervorgehoben) und *Gerät koppeln*; er lässt sich ausblenden und kommt nach 30 Tagen wieder. Auf der Seite **Companion-App** stehen die Links dauerhaft neben dem Kopplungscode, mit Version und Dateigröße.
+
 **Hinweis zu unsignierten Installern:** Die Installer sind nicht signiert. Prüfe vorher die Prüfsumme (`SHA256SUMS` aus dem Release: `shasum -a 256 <Datei>` auf dem Mac, `certutil -hashfile <Datei> SHA256` unter Windows).
 
 - **Windows:** *SmartScreen* („Der Computer wurde durch Windows geschützt“) → *Weitere Informationen* → *Trotzdem ausführen*.
@@ -32,6 +34,10 @@ Die Installer stehen bei den **Release-Dateien** des Projekts (GitHub → *Relea
 Mit einer Apple-Developer-ID und Notarisierung entfällt das (siehe [Entwicklung](ENTWICKLUNG.md)).
 
 macOS braucht **keine** Zusatzrechte (weder „Bedienungshilfen“ noch „Bildschirmaufnahme“): Der Name der aktiven App und der Sperrzustand sind ohne sie lesbar.
+
+## Aktualisieren
+
+Der Server kennt die neueste Version (Update-Prüfung, siehe [Administration](ADMINISTRATION.md#system-und-updates)) und meldet sie dem Companion. Ist deine Version älter, zeigt das Fenster **„Update verfügbar (x.y.z)“** mit **Herunterladen** (öffnet den Installer für dein Betriebssystem im Browser) und **Versionshinweise**; im Tray-Menü steht der Eintrag „Update verfügbar …“. Der Companion geht dafür nicht selbst ins Netz und merkt sich den Hinweis auch offline. Es gibt **keine stille Selbstinstallation**, weil die Installer nicht signiert sind: Lade die neue Datei herunter und installiere sie über die vorhandene Version (Kopplung und Daten bleiben). Hat der Administrator die Update-Prüfung abgeschaltet, gibt es keinen Hinweis.
 
 ## Koppeln
 

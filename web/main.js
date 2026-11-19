@@ -27,6 +27,7 @@ async function loadAdminTab() {
   if (S.adminTab === 'log') await loadLog();
   if (S.adminTab === 'mail') { S.smtp = await api('GET', '/admin/smtp'); }
   if (S.adminTab === 'sess') S.sessAdmin = await api('GET', '/admin/sessions');
+  if (S.adminTab === 'system' && !S.demo) S.update = await api('GET', '/admin/update');
 }
 /* Wird dasselbe Fenster neu gezeichnet (nach einer Eingabe), bleiben Fokus und Scrollstand, und es blendet nicht erneut ein */
 let lastModal = null;
@@ -201,6 +202,7 @@ async function saveReg() {
 
 /* ---------- Aktionen ---------- */
 const H = {
+  ...UPD_ACTIONS,
   async login() {
     const mail = $('#lg-mail').value.trim(), pw = $('#lg-pw').value;
     if (!mail || !pw) return toast('Bitte E-Mail und Passwort eingeben', true);

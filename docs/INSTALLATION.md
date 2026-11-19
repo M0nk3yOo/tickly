@@ -39,7 +39,9 @@ Wichtige Werte in `.env`:
 | `TICKLY_TZ` | Zeitzone für Arbeitstage, Standard `Europe/Berlin`. |
 | `TRUSTED_PROXIES` | Zusätzliche Proxy-Adressen, deren Weiterleitungs-Header gelten (Komma getrennt, auch CIDR). Lokale/private Adressen (Docker-Netz) gelten automatisch. |
 | `LOG_RETENTION_DAYS` | So lange bleibt das Protokoll (Standard 365). |
-| `COMPANION_LATEST_VERSION` | Neueste Companion-Version für den Hinweis „veraltet“. Standard: höchste gemeldete. |
+| `COMPANION_LATEST_VERSION` | Neueste Companion-Version für den Hinweis „veraltet“. Hat Vorrang vor der Update-Prüfung. Standard: die bei GitHub gefundene bzw. höchste gemeldete. |
+| `TICKLY_UPDATE_CHECK` | `0` schaltet die Suche nach neuen Versionen ab (der Server kontaktiert dann nie GitHub). Standard: an, siehe [Update-Hinweise](#update-hinweise). |
+| `TICKLY_UPDATE_REPO` | GitHub-Repository, dessen neuestes Release geprüft wird. Standard `M0nk3yOo/tickly`. |
 
 Weitere Umgebungsvariablen des Servers (selten nötig): `PORT`, `BIND`, `WEBAUTHN_RP_ID`, `DATABASE_URL` (ohne Compose), `TICKLY_SECRET_FILE` (Datei statt Variable, z. B. Docker-Secret), `RUST_LOG`.
 
@@ -143,7 +145,15 @@ docker compose up -d --build
 
 Datenbankänderungen werden beim Start automatisch eingespielt. Lies vorher den [Changelog](../CHANGELOG.md). Sichere vor jedem Update.
 
+Mit dem veröffentlichten Image (`ghcr.io/m0nk3yoo/tickly:<Version>`) genügt `docker compose pull && docker compose up -d`; wer aus dem Quellcode baut, nimmt `git pull` und `docker compose up -d --build`.
+
 Welche Version läuft, steht in der Weboberfläche **unten links in der Seitenleiste** („Server 0.9.4“). Nach einem Update siehst du dort, ob der neue Stand aktiv ist.
+
+### Update-Hinweise
+
+Der Server fragt höchstens alle 6 Stunden bei GitHub (`api.github.com`, Repository aus `TICKLY_UPDATE_REPO`) nach dem neuesten Release. Ist es neuer als die laufende Version, sehen **Administratoren** oben in der Weboberfläche den Hinweis „Neue Version x.y.z verfügbar“ (wegklickbar, gilt je Version) samt Link zu den Versionshinweisen. Unter *Serververwaltung → System* stehen installierte und neueste Version, der Zeitpunkt der letzten Prüfung, **Jetzt prüfen** und der Schalter **Nach Updates suchen**. Auch die **Companion-Apps** erfahren so von neuen Versionen (Hinweis mit Download-Knopf). Installiert wird nie von selbst: Die Installer sind nicht signiert, es gibt nur den Hinweis und den Download nach einem Klick.
+
+Abschalten, z. B. in abgeschotteten Netzen: `TICKLY_UPDATE_CHECK=0` in der `.env` (hat Vorrang) oder den Schalter in der Serververwaltung. Dann kontaktiert der Server GitHub nie. Was dabei übertragen wird, steht in [Sicherheit](SICHERHEIT.md#update-prüfung).
 
 **x86 und ARM:** `docker compose up -d --build` baut das Image für die Architektur deines Rechners (x86-64 oder ARM64). Die veröffentlichten Images `ghcr.io/m0nk3yoo/tickly:<Version>` enthalten beide (`linux/amd64` und `linux/arm64`). Die x86-Variante ist mit Rosetta auf einem Apple-Silicon-Mac gestartet und geprüft worden (Server und Datenbank healthy, Origin-Prüfung wirksam), aber nicht auf echter x86-Hardware.
 

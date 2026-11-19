@@ -759,7 +759,7 @@ function vCompanionReal() {
   return `<div class="g-1-1">
     <div class="card"><div class="ch"><h3>Verbundene Geräte</h3></div>${dev}
       <div class="callout info" style="margin-top:12px">${ic('info')}<span>Der Companion meldet Rechnerstart, Sperre, aktive App und Beenden. Bricht die Verbindung ab, sammelt er die Ereignisse und sendet sie später nach.</span></div></div>
-    <div class="card"><div class="ch"><h3>Neues Gerät koppeln</h3></div>
+    <div class="card"><div class="ch"><h3>Neues Gerät koppeln</h3></div>${downloadCard()}
       <ol class="steps"><li>Companion auf dem Rechner installieren und öffnen.</li><li>Server-Adresse eintragen: <b class="mono">${esc(location.origin)}</b></li><li>Hier einen Code erzeugen und im Companion eingeben.</li></ol>
       ${code ? `<div class="paircode"><span class="mono">${esc(code)}</span><button class="btn sm" data-a="copyCode">Kopieren</button></div><p class="hint">Gilt noch etwa ${left} Min. und nur für eine Kopplung.</p>` : ''}
       <button class="btn primary" data-a="pairCode">${ic('plus', 15)} ${code ? 'Neuen Code erzeugen' : 'Kopplungscode erzeugen'}</button></div></div>`;
@@ -1024,7 +1024,7 @@ function vAdmin() {
   const U = S.users, q = S.adminQ.toLowerCase();
   const filtered = U.filter(u => (S.adminFilter === 'all' || u.status === S.adminFilter) && (!q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)));
   const cnt = k => U.filter(u => u.status === k).length, act = U.filter(u => u.status === 'active');
-  const head = `<div class="tabs"><button class="${S.adminTab === 'users' ? 'on' : ''}" data-a="adminTab" data-v="users">Benutzer</button><button class="${S.adminTab === 'reg' ? 'on' : ''}" data-a="adminTab" data-v="reg">Registrierung & Richtlinien</button><button class="${S.adminTab === 'backup' ? 'on' : ''}" data-a="adminTab" data-v="sec">Sicherheit & Sperren${S.sec && S.sec.blocked.length ? ` <span class="badge bad" style="margin-left:4px">${S.sec.blocked.length}</span>` : ''}</button><button class="${S.adminTab === 'mail' ? 'on' : ''}" data-a="adminTab" data-v="mail">E-Mail</button><button class="${S.adminTab === 'sess' ? 'on' : ''}" data-a="adminTab" data-v="sess">Sitzungen & Geräte</button><button class="${S.adminTab === 'log' ? 'on' : ''}" data-a="adminTab" data-v="log">Protokoll</button><button class="${S.adminTab === 'backup' ? 'on' : ''}" data-a="adminTab" data-v="backup">Sicherung</button></div>`;
+  const head = `<div class="tabs"><button class="${S.adminTab === 'users' ? 'on' : ''}" data-a="adminTab" data-v="users">Benutzer</button><button class="${S.adminTab === 'reg' ? 'on' : ''}" data-a="adminTab" data-v="reg">Registrierung & Richtlinien</button><button class="${S.adminTab === 'backup' ? 'on' : ''}" data-a="adminTab" data-v="sec">Sicherheit & Sperren${S.sec && S.sec.blocked.length ? ` <span class="badge bad" style="margin-left:4px">${S.sec.blocked.length}</span>` : ''}</button><button class="${S.adminTab === 'mail' ? 'on' : ''}" data-a="adminTab" data-v="mail">E-Mail</button><button class="${S.adminTab === 'sess' ? 'on' : ''}" data-a="adminTab" data-v="sess">Sitzungen & Geräte</button><button class="${S.adminTab === 'log' ? 'on' : ''}" data-a="adminTab" data-v="log">Protokoll</button><button class="${S.adminTab === 'system' ? 'on' : ''}" data-a="adminTab" data-v="system">System${S.update && S.update.enabled && S.update.newer ? ' <span class="badge warn" style="margin-left:4px">neu</span>' : ''}</button><button class="${S.adminTab === 'backup' ? 'on' : ''}" data-a="adminTab" data-v="backup">Sicherung</button></div>`;
   const kpi = `<div class="g4"><div class="tile"><div class="l">${ic('users', 15)}Benutzer</div><div class="v">${U.length}</div><div class="s">${cnt('active')} aktiv · ${cnt('blocked')} gesperrt</div></div>
     <div class="tile"><div class="l">${ic('bolt', 15)}Heute aktiv</div><div class="v">${U.filter(u => u.today === 'tracking').length}</div><div class="s">Companion verbunden</div></div>
     <div class="tile"><div class="l">${ic('clock' in ICONS ? 'clock' : 'day', 15)}Wartet auf Freigabe</div><div class="v">${cnt('pending')}</div><div class="s">${cnt('pending') ? 'Aktion erforderlich' : 'Alles erledigt'}</div></div>
@@ -1034,6 +1034,7 @@ function vAdmin() {
   if (S.adminTab === 'mail') return `<div class="stack">${head}${vMail()}</div>`;
   if (S.adminTab === 'sess') return `<div class="stack">${head}${vSessions()}</div>`;
   if (S.adminTab === 'log') return `<div class="stack">${head}${vLog()}</div>`;
+  if (S.adminTab === 'system') return `<div class="stack">${head}${vUpdate()}</div>`;
   if (S.adminTab === 'reg') {
     return `<div class="stack">${head}<div class="g-1-1"><div class="card"><div class="ch"><h3>Registrierung</h3></div>
       ${setRow('Offene Registrierung', 'Jeder kann sich selbst ein Konto anlegen. Aus: nur per Einladung.', toggle('reg.open', S.reg.open))}
@@ -1213,7 +1214,7 @@ function shell(view) {
   <main class="main"><div class="top"><div class="grow"><h1>${h1}</h1><div class="sub">${sub}</div></div>
     <span class="clockchip">${ic('day', 15)}${DOW_S[dow(TODAY)]}, ${dMid(TODAY).slice(0, 6)} · <b class="mono" style="color:var(--ink)">${hm(S.now)}</b>${S.speed > 1 ? ` · ${S.speed}×` : ''}</span>
     <button class="ibtn bd" data-a="theme" title="Darstellung: ${{ system: 'System', light: 'Hell', dark: 'Dunkel' }[S.themePref]} (Klick wechselt)">${ic({ system: 'monitor', light: 'sun', dark: 'moon' }[S.themePref], 18)}</button></div>
-  <div class="content" id="view">${mfaBanner()}${startBalBanner()}${secqBanner()}${view}</div></main></div>`;
+  <div class="content" id="view">${mfaBanner()}${startBalBanner()}${secqBanner()}${updateBanner()}${downloadBanner()}${view}</div></main></div>`;
 }
 function demoPanel() {
   const acc = [['andre@example.de', 'André Becker', 'Administrator'], ['lena.hoffmann@example.de', 'Lena Hoffmann', 'Benutzer'], ['sophie.wagner@example.de', 'Sophie Wagner', 'Administratorin']];
