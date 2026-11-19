@@ -66,7 +66,9 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/admin/users/{id}", put(admin_update).delete(admin_delete))
         .route("/admin/users/{id}/status", post(admin_status))
         .route("/admin/users/{id}/reset-passkeys", post(admin_reset_passkeys));
-    let api = api.merge(crate::backup::routes()).merge(crate::mfa::routes()).merge(crate::secq::routes()).merge(crate::netsec::routes()).merge(crate::sessions::routes()).merge(crate::edit::routes()).merge(crate::mail::routes()).merge(crate::update::routes());
+    let api = api.merge(crate::backup::routes()).merge(crate::mfa::routes()).merge(crate::secq::routes()).merge(crate::netsec::routes()).merge(crate::sessions::routes()).merge(crate::edit::routes()).merge(crate::mail::routes()).merge(crate::update::routes()).merge(crate::apikeys::routes());
+    // Öffentliche Schnittstelle mit persönlichem API-Schlüssel (eigene Anmeldung, siehe apikeys.rs)
+    let api = api.nest("/v1", crate::apikeys::v1(app.clone()));
     Router::new()
         .nest("/api", api)
         .fallback_service(web)
@@ -597,7 +599,7 @@ async fn put_me(State(app): St, h: HeaderMap, Json(r): Json<MeReq>) -> Res<Json<
     Ok(Json(json!({ "ok": true, "emailPending": pending })))
 }
 
-fn check_abs(a: &Absence) -> Res<()> {
+pub fn check_abs(a: &Absence) -> Res<()> {
     if a.to < a.from { return bad("Das Ende liegt vor dem Beginn") }
     if (a.to - a.from).num_days() > 400 { return bad("Zeitraum zu lang") }
     Ok(())

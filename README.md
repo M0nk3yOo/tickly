@@ -73,7 +73,7 @@ Ausführlich: **[Installation](docs/INSTALLATION.md)**. Die Companion-App instal
 |---|---|
 | Betreiber | [Installation und Betrieb](docs/INSTALLATION.md) · [Administration](docs/ADMINISTRATION.md) · [Sicherheit und Datenschutz](docs/SICHERHEIT.md) |
 | Benutzer | [Benutzerhandbuch](docs/BENUTZERHANDBUCH.md) · [Companion-App](docs/COMPANION.md) |
-| Entwickler | [Architektur und API](docs/ARCHITEKTUR.md) · [Entwicklung und Release](docs/ENTWICKLUNG.md) · [Änderungen](CHANGELOG.md) |
+| Entwickler | [Architektur und API](docs/ARCHITEKTUR.md) · [Schnittstelle mit API-Schlüsseln](docs/API.md) · [Entwicklung und Release](docs/ENTWICKLUNG.md) · [Änderungen](CHANGELOG.md) |
 
 ## Aufbau
 

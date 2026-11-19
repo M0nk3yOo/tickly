@@ -11,6 +11,7 @@
 | Wiederherstellungscodes | nur als SHA-256-Hash | |
 | Zeiten | Start/Ende, Sperrzeiten, **App-Namen** je Abschnitt | **keine Fenstertitel, keine Inhalte, keine Screenshots, keine Tastatureingaben** |
 | Geräte-Token | nur als SHA-256-Hash; auf dem Gerät: macOS Datei nur für den Benutzer lesbar (kein Schlüsselbund), Windows Anmeldeinformationsverwaltung | Aufheben macht es sofort ungültig |
+| API-Schlüssel | nur als **SHA-256-Hash** plus kurzes Präfix (`tkl_ab12cd34…`) zur Wiedererkennung; der Klartext wird **einmal** beim Anlegen angezeigt | Widerruf macht ihn sofort ungültig; Teil der Sicherung (als Hash) |
 | SMTP-Passwort | | mit `TICKLY_SECRET` verschlüsselt |
 | Protokoll | Zeit, Benutzer, **IP-Adresse**, Land, Browser, Ereignis | nur Administratoren; Löschung nach `LOG_RETENTION_DAYS` |
 | Sitzungen | zufällige Kennung, IP, Land, Browser | Beenden jederzeit |
@@ -24,6 +25,16 @@
 - Antworten bei „Passwort vergessen“ und Anmeldung verraten nicht, ob ein Konto existiert (für unbekannte Adressen kommen stabile Scheinfragen). Die Registrierung nennt bereits vergebene Adressen; eine eigene Sicherheitsfrage kann ebenfalls auf ein Konto hindeuten.
 - **Sicherheitsfragen** (Passwort selbst zurücksetzen) sind ein bewusst schwächerer Weg: Antworten lassen sich erraten oder recherchieren. Deshalb: drei Fragen, alle müssen stimmen; Antworten stehen nur als Argon2-Hash in der Datenbank; 5 Fehlversuche je Konto und Stunde sperren den Weg (das kann ein Angreifer ausnutzen, um den Weg für ein Opfer zu blockieren, der Link per Mail und die Anmeldung bleiben davon unberührt), zusätzlich die IP-Sperre; ein Reset beendet alle Sitzungen, ändert aber **nie** Passkey oder TOTP; der Benutzer bekommt eine Mail. Administratoren können den Weg abschalten.
 - **Initialpasswort:** Ein Administrator kann ein Passwort setzen. Es gilt nur bis zur ersten Passwort-Anmeldung: Die Sitzung ist gesperrt, bis der Benutzer ein eigenes festlegt.
+
+## API-Schlüssel
+
+Persönliche Schlüssel (`tkl_` + 256 Bit Zufall, Details in [API.md](API.md)) gelten **nur für `/api/v1/*`**. Sie ersetzen kein Passwort und öffnen weder Administration noch Passwörter, Passkeys, Authenticator-App, Geräte-Kopplung, Sitzungen oder Schlüsselverwaltung: Diese Pfade lesen ausschließlich das Sitzungs-Cookie.
+
+- **Speicherung:** nur SHA-256-Hash (bei 256 Bit Zufall genügt ein schneller Hash, wie bei Geräte-Token) und ein Präfix. Der Klartext erscheint genau einmal in der Antwort beim Anlegen und ist danach nicht mehr abrufbar, auch nicht für Administratoren.
+- **Rechte:** „Nur lesen“ erlaubt nur `GET`. Laufzeit, Obergrenze (20 aktive je Benutzer), Schalter „API-Schlüssel erlauben“ und „unbegrenzt erlauben“ bestimmt der Administrator. Abgelaufene und widerrufene Schlüssel antworten mit 401.
+- **Konten:** Gesperrte Benutzer können ihre Schlüssel nicht nutzen, gelöschte Benutzer verlieren sie. Bewusste Entscheidung: Eine **Passwortänderung widerruft Schlüssel nicht**. Schlüssel sind eigenständige, einzeln widerrufbare Zugänge (z. B. für ein laufendes Skript); wer sie nach einem Vorfall loswerden will, widerruft sie in den Einstellungen oder lässt sie vom Administrator ungültig machen.
+- **Schutz vor Raten:** Unbekannte Schlüssel zählen wie falsche Anmeldungen für die automatische IP-Sperre; gesperrte Adressen kommen auch mit gültigem Schlüssel nicht durch. `ORIGIN_SECRET` gilt unverändert für alle Anfragen.
+- **Protokoll:** Anlegen, Widerrufen (auch durch Administratoren) und Ablehnungen bekannter Schlüssel (höchstens alle zehn Minuten je Schlüssel und Grund). „Zuletzt benutzt“ wird höchstens einmal je Minute geschrieben.
 
 ## Verschlüsselung ruhender Daten
 

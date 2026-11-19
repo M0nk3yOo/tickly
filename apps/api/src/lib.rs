@@ -1,4 +1,5 @@
 pub mod api;
+pub mod apikeys;
 pub mod backup;
 pub mod app;
 pub mod db;

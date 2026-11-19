@@ -109,6 +109,16 @@ Urlaub, Krankheit, Zeitausgleich im Kalender eintragen. Wochenenden und Feiertag
 - Ist **Tracking automatisch starten** für ein Gerät aus, beginnt das Tracking dort nie von selbst: der Companion fragt (je nach Einstellung) oder wartet, bis du es startest. Ein Gerät, das schon lief, setzt das Tracking nach einem Neustart trotzdem fort.
 - Lief das Tracking beim Herunterfahren/Neustart, geht es danach immer weiter.
 
+## API-Schlüssel
+
+Für eigene Skripte oder Auswertungen: Einstellungen → **API-Schlüssel**.
+
+1. **Neuer Schlüssel**: Bezeichnung eintragen (z. B. „Auswertung im Büro“), Laufzeit wählen (30 Tage, 90 Tage, 180 Tage, 1 Jahr, unbegrenzt; welche zur Wahl stehen, legt der Administrator fest) und die Berechtigung: **Nur lesen** oder **Lesen und Schreiben** (Tracking steuern, Abwesenheiten, Zeiten eintragen).
+2. Der Schlüssel (`tkl_…`) erscheint **nur einmal**. Mit „Kopieren“ in die Zwischenablage legen und sicher aufbewahren wie ein Passwort. Später siehst du nur noch das Kürzel am Anfang.
+3. Die Liste zeigt Bezeichnung, Kürzel, Berechtigung, Anlegedatum, Ablauf und wann der Schlüssel zuletzt benutzt wurde. **Widerrufen** macht einen Schlüssel sofort ungültig; er lässt sich nicht wiederherstellen, lege bei Bedarf einen neuen an. Du kannst bis zu 20 aktive Schlüssel haben.
+
+Ein Schlüssel kann nur die Schnittstelle unter `/api/v1` nutzen und nichts an Passwort, Passkeys, Authenticator-App, Geräten oder Sitzungen ändern. Alle Endpunkte mit Beispielen: [Schnittstelle (API)](API.md).
+
 ## Dunkelmodus
 
 *Einstellungen → Profil → Darstellung* oder das Symbol oben rechts (System → Hell → Dunkel). „System“ folgt dem Betriebssystem, auch während der Laufzeit.

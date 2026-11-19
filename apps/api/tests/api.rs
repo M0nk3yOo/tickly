@@ -65,6 +65,7 @@ async fn fresh_db(demo: bool) -> String {
         include_str!("../migrations/0013_device_clash.sql").hash(&mut h);
         include_str!("../migrations/0014_device_auto_track.sql").hash(&mut h);
         include_str!("../migrations/0015_pending_email.sql").hash(&mut h);
+        include_str!("../migrations/0016_api_keys.sql").hash(&mut h);
         include_str!("../migrations/0006_sessions_info.sql").hash(&mut h);
         include_str!("../migrations/0007_backup_kinds.sql").hash(&mut h);
         include_str!("../src/db.rs").hash(&mut h);
@@ -2869,4 +2870,347 @@ async fn device_state_carries_update_only_for_outdated_companions() {
     // Ausgeschaltet: kein Hinweis mehr
     web.put("/api/admin/update", json!({"enabled": false})).await;
     assert!(win.call_h(Method::GET, "/api/device/state", None, Some(&win_t)).await.1["update"].is_null());
+}
+
+/* ---------- Persönliche API-Schlüssel und /api/v1 ---------- */
+/// Legt als angemeldeter Benutzer einen Schlüssel an und gibt (Klartext, Eintrag) zurück.
+async fn make_key(c: &mut Client, name: &str, days: Value, write: bool) -> (String, Value) {
+    let (st, r) = c.post("/api/apikeys", json!({"name": name, "days": days, "write": write})).await;
+    assert_eq!(st, StatusCode::OK, "{r}");
+    (r["key"].as_str().unwrap().to_string(), r["item"].clone())
+}
+
+/// Anfrage nur mit Schlüssel (ohne Sitzungs-Cookie).
+async fn with_key(c: &Client, m: Method, uri: &str, body: Option<Value>, key: &str) -> (StatusCode, Value) {
+    let mut f = c.fresh();
+    f.cookie = None;
+    f.call_h(m, uri, body, Some(key)).await
+}
+
+async fn key_text(c: &Client, uri: &str, key: &str) -> (StatusCode, String, String) {
+    let rq = Request::builder().method(Method::GET).uri(uri).header(header::AUTHORIZATION, format!("Bearer {key}")).body(Body::empty()).unwrap();
+    let res = c.router.clone().oneshot(rq).await.unwrap();
+    let (st, ct) = (res.status(), res.headers().get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("").to_string());
+    (st, String::from_utf8_lossy(&res.into_body().collect().await.unwrap().to_bytes()).into_owned(), ct)
+}
+
+/// Demo-Installation: André (Administrator) und Lena (Benutzerin) sind angemeldet.
+async fn admin_and_lena() -> (Client, Client) {
+    let mut admin = Client::new().await;
+    admin.login_andre().await;
+    let mut lena = admin.fresh();
+    assert_eq!(lena.login("lena.hoffmann@example.de", "demo-passwort").await, StatusCode::OK);
+    (admin, lena)
+}
+
+#[tokio::test]
+async fn api_keys_are_created_with_limits_and_shown_only_once() {
+    let (mut admin, mut u) = admin_and_lena().await;
+    assert_eq!(admin.fresh().post("/api/apikeys", json!({"name": "x"})).await.0, StatusCode::UNAUTHORIZED);
+    // Laufzeiten und Berechtigung
+    for (days, ok) in [(json!(30), true), (json!(90), true), (json!(180), true), (json!(365), true), (json!(null), true), (json!(366), false)] {
+        let (st, r) = u.post("/api/apikeys", json!({"name": format!("Schlüssel {days}"), "days": days})).await;
+        assert_eq!(st == StatusCode::OK, ok, "{days}: {r}");
+    }
+    let (key, item) = make_key(&mut u, "Skript", json!(30), true).await;
+    assert!(key.starts_with("tkl_") && key.len() == 68, "{key}");
+    assert!(key.starts_with(item["prefix"].as_str().unwrap()), "Präfix gehört zum Schlüssel");
+    assert_eq!((item["permission"].clone(), item["status"].clone(), item["write"].clone()), (json!("write"), json!("active"), json!(true)));
+    let exp = chrono::DateTime::parse_from_rfc3339(item["expiresAt"].as_str().unwrap()).unwrap();
+    assert!((exp.timestamp() - chrono::Utc::now().timestamp() - 30 * 86400).abs() < 60);
+    // Die Liste verrät den Klartext nicht; in der Datenbank steht nur der Hash
+    let (_, list) = u.get("/api/apikeys").await;
+    assert!(!list.to_string().contains(&key[4..]), "{list}");
+    assert_eq!(list["keys"].as_array().unwrap().len(), 6);
+    let stored: Vec<u8> = sqlx::query_scalar("SELECT token_hash FROM api_keys WHERE id = $1").bind(item["id"].as_i64().unwrap()).fetch_one(&u.app.pool).await.unwrap();
+    assert_eq!(stored.len(), 32);
+    let any_plain: i64 = sqlx::query_scalar("SELECT count(*) FROM api_keys WHERE prefix = $1 OR name = $1 OR encode(token_hash, 'hex') = $2").bind(&key).bind(&key[4..]).fetch_one(&u.app.pool).await.unwrap();
+    assert_eq!(any_plain, 0);
+    // Eingaben prüfen
+    assert_eq!(u.post("/api/apikeys", json!({"name": "  ", "days": 30})).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(u.post("/api/apikeys", json!({"name": "x".repeat(61), "days": 30})).await.0, StatusCode::BAD_REQUEST);
+    // Höchstens 20 aktive Schlüssel
+    for i in 0..14 { assert_eq!(u.post("/api/apikeys", json!({"name": format!("k{i}"), "days": 30})).await.0, StatusCode::OK); }
+    let (st, r) = u.post("/api/apikeys", json!({"name": "zu viel", "days": 30})).await;
+    assert_eq!(st, StatusCode::CONFLICT, "{r}");
+    // Ein widerrufener Schlüssel macht Platz; fremde Schlüssel lassen sich nicht widerrufen
+    let id = item["id"].as_i64().unwrap();
+    assert_eq!(admin.call(Method::DELETE, &format!("/api/apikeys/{id}"), None).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(u.call(Method::DELETE, &format!("/api/apikeys/{id}"), None).await.0, StatusCode::OK);
+    assert_eq!(u.call(Method::DELETE, &format!("/api/apikeys/{id}"), None).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(u.post("/api/apikeys", json!({"name": "wieder Platz", "days": 30})).await.0, StatusCode::OK);
+    // Richtlinie: Obergrenze und unbegrenzt; nur Administratoren dürfen sie ändern
+    assert_eq!(u.put("/api/admin/apikey-policy", json!({"enabled": true, "allowUnlimited": true, "maxDays": 90})).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(admin.put("/api/admin/apikey-policy", json!({"enabled": true, "allowUnlimited": false, "maxDays": 0})).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(admin.put("/api/admin/apikey-policy", json!({"enabled": true, "allowUnlimited": false, "maxDays": 90})).await.0, StatusCode::OK);
+    let mut v = admin.fresh();
+    assert_eq!(v.login("jonas.keller@example.de", "demo-passwort").await, StatusCode::OK);
+    assert_eq!(v.post("/api/apikeys", json!({"name": "a", "days": 180})).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(v.post("/api/apikeys", json!({"name": "a"})).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(v.post("/api/apikeys", json!({"name": "a", "days": 90})).await.0, StatusCode::OK);
+    // Ausgeschaltet: nichts mehr anlegen
+    assert_eq!(admin.put("/api/admin/apikey-policy", json!({"enabled": false, "allowUnlimited": true, "maxDays": 365})).await.0, StatusCode::OK);
+    assert_eq!(v.post("/api/apikeys", json!({"name": "b", "days": 30})).await.0, StatusCode::FORBIDDEN);
+    // Anlegen und Widerrufen stehen im Protokoll
+    let log = admin.get("/api/admin/log?kind=auth&limit=100").await.1;
+    assert!(log["entries"].as_array().unwrap().iter().any(|e| e["kind"] == "apikey" && e["detail"].as_str().unwrap().contains("widerrufen")), "{log}");
+    assert!(log["entries"].as_array().unwrap().iter().any(|e| e["kind"] == "apikey" && e["detail"].as_str().unwrap().contains("angelegt")), "{log}");
+}
+
+#[tokio::test]
+async fn api_key_authenticates_only_the_v1_api_and_respects_expiry_revocation_and_read_only() {
+    let (mut admin, mut u) = admin_and_lena().await;
+    let (ro, ro_item) = make_key(&mut u, "nur lesen", json!(30), false).await;
+    let (rw, rw_item) = make_key(&mut u, "schreiben", json!(30), true).await;
+    // Nutzung
+    let (st, me) = with_key(&u, Method::GET, "/api/v1/me", None, &ro).await;
+    assert_eq!(st, StatusCode::OK, "{me}");
+    assert_eq!((me["email"].clone(), me["role"].clone(), me["permission"].clone()), (json!("lena.hoffmann@example.de"), json!("user"), json!("read")));
+    assert_eq!(me["timezone"], "Europe/Berlin");
+    // „zuletzt benutzt“ wurde gesetzt
+    let list = u.get("/api/apikeys").await.1;
+    let k = list["keys"].as_array().unwrap().iter().find(|k| k["id"] == ro_item["id"]).unwrap();
+    assert!(k["lastUsedAt"].is_string(), "{k}");
+    // Ohne, mit falschem oder fremdem Schlüssel; nur das Sitzungs-Cookie reicht für /v1 nicht
+    assert_eq!(u.fresh().get("/api/v1/me").await.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(u.get("/api/v1/me").await.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(with_key(&u, Method::GET, "/api/v1/me", None, "tkl_falsch").await.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(with_key(&u, Method::GET, "/api/v1/me", None, "tk_abc").await.0, StatusCode::UNAUTHORIZED);
+    // Der Schlüssel öffnet nichts außerhalb von /api/v1
+    for (m, uri) in [(Method::GET, "/api/snapshot"), (Method::GET, "/api/admin/security"), (Method::POST, "/api/me/password"), (Method::GET, "/api/apikeys"), (Method::POST, "/api/devices/pair-code"),
+        (Method::GET, "/api/sessions"), (Method::POST, "/api/totp/setup"), (Method::POST, "/api/passkey/register/start"), (Method::PUT, "/api/settings"), (Method::GET, "/api/device/state")] {
+        let (st, r) = with_key(&u, m.clone(), uri, Some(json!({"current": "x", "password": "y"})), &rw).await;
+        // Pfade mit Body-Prüfung antworten schon vor der Anmeldung mit 422; entscheidend ist: nie Erfolg
+        assert!(st == StatusCode::UNAUTHORIZED || st == StatusCode::UNPROCESSABLE_ENTITY, "{m} {uri}: {st} {r}");
+    }
+    // Nur lesen: Schreiben ist verboten, mit Schreibrecht erlaubt
+    let abs = json!({"type": "vacation", "from": "2026-12-01", "to": "2026-12-02", "note": "API"});
+    assert_eq!(with_key(&u, Method::POST, "/api/v1/absences", Some(abs.clone()), &ro).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(with_key(&u, Method::POST, "/api/v1/absences", Some(abs.clone()), &rw).await.0, StatusCode::CREATED);
+    // Widerrufen
+    assert_eq!(u.call(Method::DELETE, &format!("/api/apikeys/{}", ro_item["id"]), None).await.0, StatusCode::OK);
+    let (st, r) = with_key(&u, Method::GET, "/api/v1/me", None, &ro).await;
+    assert_eq!((st, r["error"].as_str().unwrap().contains("widerrufen")), (StatusCode::UNAUTHORIZED, true), "{r}");
+    // Abgelaufen
+    sqlx::query("UPDATE api_keys SET expires_at = now() - interval '1 minute' WHERE id = $1").bind(rw_item["id"].as_i64().unwrap()).execute(&u.app.pool).await.unwrap();
+    let (st, r) = with_key(&u, Method::GET, "/api/v1/me", None, &rw).await;
+    assert_eq!((st, r["error"].as_str().unwrap().contains("abgelaufen")), (StatusCode::UNAUTHORIZED, true), "{r}");
+    let list = u.get("/api/apikeys").await.1;
+    let states: Vec<&str> = list["keys"].as_array().unwrap().iter().map(|k| k["status"].as_str().unwrap()).collect();
+    assert!(states.contains(&"revoked") && states.contains(&"expired"), "{states:?}");
+    // Die Ablehnungen stehen im Protokoll
+    let log = admin.get("/api/admin/log?kind=fail&limit=50").await.1;
+    assert!(log["entries"].as_array().unwrap().iter().any(|e| e["kind"] == "apikey" && e["detail"].as_str().unwrap().contains("abgelehnt")), "{log}");
+}
+
+#[tokio::test]
+async fn admin_sees_all_keys_can_revoke_and_blocked_users_or_a_disabled_policy_stop_keys() {
+    let (mut admin, mut u) = admin_and_lena().await;
+    let (key, item) = make_key(&mut u, "Lenas Skript", json!(90), false).await;
+    let mut a2 = admin.fresh();
+    a2.login_andre().await;
+    let (key_admin, mine) = make_key(&mut a2, "Admin-Schlüssel", json!(null), true).await;
+    assert!(mine["expiresAt"].is_null());
+    // Normale Benutzer sehen die Übersicht nicht
+    assert_eq!(u.get("/api/admin/apikeys").await.0, StatusCode::FORBIDDEN);
+    assert_eq!(u.call(Method::DELETE, &format!("/api/admin/apikeys/{}", item["id"]), None).await.0, StatusCode::FORBIDDEN);
+    let (st, all) = admin.get("/api/admin/apikeys").await;
+    assert_eq!(st, StatusCode::OK, "{all}");
+    assert_eq!((all["total"].clone(), all["active"].clone()), (json!(2), json!(2)));
+    let k = all["keys"].as_array().unwrap().iter().find(|k| k["id"] == item["id"]).unwrap();
+    assert_eq!((k["email"].clone(), k["name"].clone(), k["status"].clone(), k["permission"].clone()), (json!("lena.hoffmann@example.de"), json!("Lenas Skript"), json!("active"), json!("read")));
+    assert!(!all.to_string().contains(&key[4..]));
+    // Suche und Status
+    assert_eq!(admin.get("/api/admin/apikeys?q=lena").await.1["keys"].as_array().unwrap().len(), 1);
+    assert_eq!(admin.get("/api/admin/apikeys?q=zzz").await.1["keys"].as_array().unwrap().len(), 0);
+    assert_eq!(admin.get("/api/admin/apikeys?status=revoked").await.1["keys"].as_array().unwrap().len(), 0);
+    // Gesperrter Benutzer: Schlüssel gilt nicht mehr, nach Freischaltung wieder
+    assert_eq!(with_key(&u, Method::GET, "/api/v1/me", None, &key).await.0, StatusCode::OK);
+    assert_eq!(admin.post("/api/admin/users/u2/status", json!({"status": "blocked"})).await.0, StatusCode::OK);
+    assert_eq!(with_key(&u, Method::GET, "/api/v1/me", None, &key).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(admin.post("/api/admin/users/u2/status", json!({"status": "active"})).await.0, StatusCode::OK);
+    assert_eq!(with_key(&u, Method::GET, "/api/v1/me", None, &key).await.0, StatusCode::OK);
+    // Richtlinie aus: kein Schlüssel wird akzeptiert
+    assert_eq!(admin.put("/api/admin/apikey-policy", json!({"enabled": false, "allowUnlimited": true, "maxDays": 365})).await.0, StatusCode::OK);
+    assert_eq!(with_key(&u, Method::GET, "/api/v1/me", None, &key).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(admin.put("/api/admin/apikey-policy", json!({"enabled": true, "allowUnlimited": true, "maxDays": 365})).await.0, StatusCode::OK);
+    assert_eq!(with_key(&u, Method::GET, "/api/v1/me", None, &key).await.0, StatusCode::OK);
+    // Widerruf durch den Administrator, mit Protokolleintrag
+    assert_eq!(admin.call(Method::DELETE, &format!("/api/admin/apikeys/{}", item["id"]), None).await.0, StatusCode::OK);
+    assert_eq!(admin.call(Method::DELETE, &format!("/api/admin/apikeys/{}", item["id"]), None).await.0, StatusCode::NOT_FOUND);
+    assert_eq!(with_key(&u, Method::GET, "/api/v1/me", None, &key).await.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(admin.get("/api/admin/apikeys?status=revoked").await.1["keys"].as_array().unwrap().len(), 1);
+    let log = admin.get("/api/admin/log?kind=admin&limit=50").await.1;
+    assert!(log["entries"].as_array().unwrap().iter().any(|e| e["detail"].as_str().unwrap().contains("API-Schlüssel") && e["detail"].as_str().unwrap().contains("widerrufen")), "{log}");
+    // Gelöschte Benutzer nehmen ihre Schlüssel mit
+    assert_eq!(u.login("lena.hoffmann@example.de", "demo-passwort").await, StatusCode::OK);
+    let (key2, _) = make_key(&mut u, "weg", json!(30), false).await;
+    assert_eq!(admin.call(Method::DELETE, "/api/admin/users/u2", None).await.0, StatusCode::OK);
+    assert_eq!(with_key(&u, Method::GET, "/api/v1/me", None, &key2).await.0, StatusCode::UNAUTHORIZED);
+    assert_eq!(with_key(&u, Method::GET, "/api/v1/me", None, &key_admin).await.0, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn wrong_api_keys_count_like_failed_logins_and_block_the_address() {
+    let mut c = Client::new().await.from_ip("203.0.113.50");
+    c.login_andre().await;
+    let (key, _) = make_key(&mut c, "gut", json!(30), false).await;
+    let mut anon = c.fresh().from_ip("203.0.113.50");
+    anon.cookie = None;
+    for i in 0..5 {
+        let (st, _) = anon.call_h(Method::GET, "/api/v1/me", None, Some(&format!("tkl_{i:064}"))).await;
+        assert_eq!(st, StatusCode::UNAUTHORIZED);
+    }
+    // Danach ist die Adresse gesperrt – auch ein richtiger Schlüssel kommt nicht durch
+    let (st, r) = anon.call_h(Method::GET, "/api/v1/me", None, Some(&key)).await;
+    assert_eq!(st, StatusCode::FORBIDDEN, "{r}");
+    // Eine andere Adresse ist nicht betroffen
+    let mut other = c.fresh().from_ip("203.0.113.51");
+    other.cookie = None;
+    assert_eq!(other.call_h(Method::GET, "/api/v1/me", None, Some(&key)).await.0, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn v1_reports_the_same_numbers_as_the_web_app_and_exports_csv() {
+    let mut c = Client::new().await;
+    c.login_andre().await;
+    let (key, _) = make_key(&mut c, "Auswertung", json!(null), false).await;
+    let snap = c.get("/api/snapshot?now=872").await.1;
+    // Tage: dieselben Zahlen wie im Snapshot (gerechnet wird nur einmal, in tickly-core)
+    let (st, r) = with_key(&c, Method::GET, "/api/v1/days?from=2026-10-19&to=2026-10-25", None, &key).await;
+    assert_eq!(st, StatusCode::OK, "{r}");
+    let days = r["days"].as_array().unwrap();
+    assert_eq!(days.len(), 7);
+    for d in days {
+        let s = day(&snap, d["date"].as_str().unwrap());
+        for (a, b) in [("countedMin", "counted"), ("grossMin", "gross"), ("netMin", "net"), ("sollMin", "soll"), ("diffMin", "diff")] {
+            assert!((d[a].as_f64().unwrap() - s[b].as_f64().unwrap()).abs() < 0.01, "{} {a}: {d} vs {s}", d["date"]);
+        }
+    }
+    let worked = days.iter().find(|d| d["worked"] == true).expect("ein Arbeitstag");
+    assert!(worked["start"].as_str().unwrap().contains(':') && worked["end"].is_string(), "{worked}");
+    // Ein Tag mit Abschnitten
+    let date = worked["date"].as_str().unwrap();
+    let (st, d) = with_key(&c, Method::GET, &format!("/api/v1/days/{date}"), None, &key).await;
+    assert_eq!(st, StatusCode::OK, "{d}");
+    assert!(!d["segments"].as_array().unwrap().is_empty());
+    assert_eq!(d["segments"][0]["kind"], "app");
+    // Zeitraum begrenzt, Eingaben geprüft
+    assert_eq!(with_key(&c, Method::GET, "/api/v1/days?from=2025-01-01&to=2026-10-25", None, &key).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(with_key(&c, Method::GET, "/api/v1/days?from=2026-01-01&to=2027-01-02", None, &key).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(with_key(&c, Method::GET, "/api/v1/days?from=2026-10-25&to=2026-10-19", None, &key).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(with_key(&c, Method::GET, "/api/v1/days/gestern", None, &key).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(with_key(&c, Method::GET, "/api/v1/days?from=2026-10-01&to=morgen", None, &key).await.0, StatusCode::BAD_REQUEST);
+    // Überstundenkonto und Status von heute
+    let (_, b) = with_key(&c, Method::GET, "/api/v1/balance", None, &key).await;
+    let (_, s) = with_key(&c, Method::GET, "/api/v1/status", None, &key).await;
+    assert!(b["balanceMin"].is_number() && b["month"]["diffMin"].is_number(), "{b}");
+    assert_eq!(s["date"], "2026-10-26");
+    assert!(["running", "locked", "paused", "asking", "idle", "stopped", "none"].contains(&s["state"].as_str().unwrap()), "{s}");
+    assert!((s["balanceMin"].as_f64().unwrap() - b["balanceMin"].as_f64().unwrap()).abs() < 0.01);
+    assert!(s["sollMin"].is_number() && s["countedMin"].is_number() && s["limits"]["plannedEnd"].is_boolean(), "{s}");
+    // Abwesenheiten (Beispieldaten von André)
+    let (_, a) = with_key(&c, Method::GET, "/api/v1/absences", None, &key).await;
+    assert!(a["absences"].as_array().unwrap().iter().all(|x| x["workdays"].is_number() && x["type"].is_string()), "{a}");
+    // CSV
+    let (st, csv, ct) = key_text(&c, "/api/v1/export.csv?from=2026-10-19&to=2026-10-25", &key).await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(ct.starts_with("text/csv"), "{ct}");
+    let lines: Vec<&str> = csv.trim_start_matches('\u{feff}').lines().collect();
+    assert_eq!(lines[0], "Datum;Beginn;Ende;Brutto;Pause;Gezählt;Soll;Saldo;Hinweis");
+    assert!(lines.len() >= 6 && lines.iter().any(|l| l.starts_with(date)), "{csv}");
+}
+
+#[tokio::test]
+async fn v1_controls_tracking_absences_and_manual_entries_with_the_web_rules() {
+    let mut c = Client::real().await;
+    assert_eq!(c.login("chef@example.de", "Sehr-Langes-Passwort-42").await, StatusCode::OK);
+    let (key, _) = make_key(&mut c, "Schreiben", json!(30), true).await;
+    let (ro, _) = make_key(&mut c, "Lesen", json!(30), false).await;
+    let (today, now) = c.app.clock(None);
+    sqlx::query("UPDATE users SET track_start = $1").bind(today - chrono::Duration::days(30)).execute(&c.app.pool).await.unwrap();
+    // Tracking: Lesen reicht nicht, Schreiben schon; Regeln wie in der Weboberfläche
+    assert_eq!(with_key(&c, Method::POST, "/api/v1/tracking/start", Some(json!({})), &ro).await.0, StatusCode::FORBIDDEN);
+    let (st, r) = with_key(&c, Method::POST, "/api/v1/tracking/start", Some(json!({})), &key).await;
+    assert_eq!(st, StatusCode::OK, "{r}");
+    assert_eq!((r["status"]["state"].clone(), r["status"]["tracking"].clone()), (json!("running"), json!(true)), "{r}");
+    assert_eq!(with_key(&c, Method::POST, "/api/v1/tracking/start", Some(json!({})), &key).await.0, StatusCode::CONFLICT);
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    let (st, r) = with_key(&c, Method::POST, "/api/v1/tracking/pause", Some(json!({})), &key).await;
+    assert_eq!((st, r["status"]["state"].clone()), (StatusCode::OK, json!("paused")), "{r}");
+    assert_eq!(with_key(&c, Method::POST, "/api/v1/tracking/start", Some(json!({})), &key).await.0, StatusCode::OK);
+    // Ende vorab festlegen: vom Administrator abschaltbar
+    if now < 1380.0 {
+        let mut reg = db::reg_policy(&c.app.pool).await.map_err(|e| e.1).unwrap();
+        reg.allow_planned_end = false;
+        db::set_reg_policy(&c.app.pool, &reg).await.map_err(|e| e.1).unwrap();
+        assert_eq!(with_key(&c, Method::POST, "/api/v1/tracking/stop", Some(json!({"at": "23:30"})), &key).await.0, StatusCode::FORBIDDEN);
+        reg.allow_planned_end = true;
+        db::set_reg_policy(&c.app.pool, &reg).await.map_err(|e| e.1).unwrap();
+        let (st, r) = with_key(&c, Method::POST, "/api/v1/tracking/stop", Some(json!({"at": "23:30"})), &key).await;
+        assert_eq!((st, r["planned"].clone(), r["status"]["plannedEnd"].clone()), (StatusCode::OK, json!(true), json!("23:30")), "{r}");
+        assert_eq!(with_key(&c, Method::DELETE, "/api/v1/tracking/planned-end", None, &key).await.0, StatusCode::OK);
+    }
+    assert_eq!(with_key(&c, Method::POST, "/api/v1/tracking/stop", Some(json!({"at": "zwölf"})), &key).await.0, StatusCode::BAD_REQUEST);
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    let (st, r) = with_key(&c, Method::POST, "/api/v1/tracking/stop", None, &key).await;
+    assert_eq!((st, r["status"]["state"].clone()), (StatusCode::OK, json!("stopped")), "{r}");
+    assert_eq!(with_key(&c, Method::POST, "/api/v1/tracking/stop", None, &key).await.0, StatusCode::CONFLICT);
+    // Abwesenheiten: anlegen, ändern, löschen
+    let abs = json!({"type": "sick", "from": (today + chrono::Duration::days(10)).to_string(), "to": (today + chrono::Duration::days(12)).to_string(), "note": "Arzt"});
+    let (st, r) = with_key(&c, Method::POST, "/api/v1/absences", Some(abs.clone()), &key).await;
+    assert_eq!(st, StatusCode::CREATED, "{r}");
+    let id = r["id"].as_i64().unwrap();
+    let mut wrong = abs.clone();
+    wrong["to"] = json!((today + chrono::Duration::days(5)).to_string());
+    assert_eq!(with_key(&c, Method::POST, "/api/v1/absences", Some(wrong), &key).await.0, StatusCode::BAD_REQUEST);
+    let mut upd = abs.clone();
+    upd["type"] = json!("vacation");
+    assert_eq!(with_key(&c, Method::PUT, &format!("/api/v1/absences/{id}"), Some(upd), &key).await.0, StatusCode::OK);
+    let (_, l) = with_key(&c, Method::GET, "/api/v1/absences", None, &ro).await;
+    assert_eq!((l["absences"].as_array().unwrap().len(), l["absences"][0]["type"].clone()), (1, json!("vacation")), "{l}");
+    assert_eq!(with_key(&c, Method::DELETE, &format!("/api/v1/absences/{id}"), None, &ro).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(with_key(&c, Method::DELETE, &format!("/api/v1/absences/{id}"), None, &key).await.0, StatusCode::OK);
+    assert_eq!(with_key(&c, Method::DELETE, &format!("/api/v1/absences/{id}"), None, &key).await.0, StatusCode::NOT_FOUND);
+    // Zeit eintragen (Logik aus „Zeiten bearbeiten“): ergänzt vorhandene Abschnitte, prüft Überschneidungen und Grenzen
+    let date = (today - chrono::Duration::days(3)).to_string();
+    let e = |from: &str, to: &str| json!({"date": date, "from": from, "to": to, "app": "Projekt", "note": "Nachtrag"});
+    assert_eq!(with_key(&c, Method::POST, "/api/v1/entries", Some(e("08:00", "12:00")), &ro).await.0, StatusCode::FORBIDDEN);
+    let (st, r) = with_key(&c, Method::POST, "/api/v1/entries", Some(e("08:00", "12:00")), &key).await;
+    assert_eq!(st, StatusCode::CREATED, "{r}");
+    assert_eq!(with_key(&c, Method::POST, "/api/v1/entries", Some(e("13:00", "17:00")), &key).await.0, StatusCode::CREATED);
+    assert_eq!(with_key(&c, Method::POST, "/api/v1/entries", Some(e("11:00", "14:00")), &key).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(with_key(&c, Method::POST, "/api/v1/entries", Some(e("17:00", "16:00")), &key).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(with_key(&c, Method::POST, "/api/v1/entries", Some(e("8 Uhr", "9:00")), &key).await.0, StatusCode::BAD_REQUEST);
+    let (_, d) = with_key(&c, Method::GET, &format!("/api/v1/days/{date}"), None, &ro).await;
+    assert_eq!(d["segments"].as_array().unwrap().len(), 2, "{d}");
+    assert_eq!((d["grossMin"].clone(), d["worked"].clone(), d["segments"][0]["app"].clone()), (json!(480.0), json!(true), json!("Projekt")), "{d}");
+    // CSV enthält den Tag
+    let (_, csv, _) = key_text(&c, &format!("/api/v1/export.csv?from={date}&to={date}"), &ro).await;
+    assert!(csv.contains(&format!("{date};08:00;17:00;8:00")), "{csv}");
+    // Rückwirkungsgrenze des Administrators (Standard 90 Tage) und Zukunft
+    let old = (today - chrono::Duration::days(120)).to_string();
+    sqlx::query("UPDATE users SET track_start = $1").bind(today - chrono::Duration::days(200)).execute(&c.app.pool).await.unwrap();
+    assert_eq!(with_key(&c, Method::POST, "/api/v1/entries", Some(json!({"date": old, "from": "08:00", "to": "09:00"})), &key).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(with_key(&c, Method::POST, "/api/v1/entries", Some(json!({"date": (today + chrono::Duration::days(1)).to_string(), "from": "08:00", "to": "09:00"})), &key).await.0, StatusCode::BAD_REQUEST);
+    let mut reg = db::reg_policy(&c.app.pool).await.map_err(|e| e.1).unwrap();
+    reg.edit_days_back = 0;
+    db::set_reg_policy(&c.app.pool, &reg).await.map_err(|e| e.1).unwrap();
+    assert_eq!(with_key(&c, Method::POST, "/api/v1/entries", Some(e("18:00", "19:00")), &key).await.0, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn api_keys_are_part_of_backup_and_restore() {
+    let mut c = Client::new().await;
+    c.login_andre().await;
+    let (key, item) = make_key(&mut c, "Sicherung", json!(90), false).await;
+    let (st, file) = c.raw(Method::GET, "/api/admin/backup", vec![]).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(c.call(Method::DELETE, &format!("/api/apikeys/{}", item["id"]), None).await.0, StatusCode::OK);
+    assert_eq!(with_key(&c, Method::GET, "/api/v1/me", None, &key).await.0, StatusCode::UNAUTHORIZED);
+    let (st, r) = c.raw(Method::POST, "/api/admin/restore", file).await;
+    assert_eq!(st, StatusCode::OK, "{}", String::from_utf8_lossy(&r));
+    assert_eq!(with_key(&c, Method::GET, "/api/v1/me", None, &key).await.0, StatusCode::OK);
+    // Neue Schlüssel nach der Wiederherstellung funktionieren (Zähler nachgezogen)
+    make_key(&mut c, "danach", json!(30), false).await;
 }

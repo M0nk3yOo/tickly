@@ -627,6 +627,7 @@ const H = {
   ovClose() { },
   async confirmOk() { const f = S.modal.fn; closeModal(); await f(); }
 };
+Object.assign(H, AK_H); // API-Schlüssel (apikeys.js)
 async function afterChange(path) {
   // Erst nach der Antwort neu zeichnen (nicht im Ereignis des Eingabefelds, das gerade den Fokus verliert)
   if (path === 'modal.nat') { if (S.modal) { S.modal.prev = null; S.modal.err = ''; } return H.nightPreview(); }

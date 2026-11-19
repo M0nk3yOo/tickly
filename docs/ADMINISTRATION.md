@@ -73,6 +73,20 @@ Der Reiter **System** zeigt die **installierte** und die **neueste Version** (la
 
 **Der Server kontaktiert dafür `api.github.com`.** Übertragen wird nur die Anfrage selbst (User-Agent `tickly-server/<Version>`), keine Benutzerdaten; Einzelheiten in [Sicherheit](SICHERHEIT.md). Aktualisieren: Sicherung anlegen, dann `docker compose pull && docker compose up -d` (oder bei Bau aus dem Quellcode `git pull && docker compose up -d --build`), siehe [Installation](INSTALLATION.md#aktualisieren). Dieselbe Quelle steuert den Hinweis „veraltet“ bei Companion-Geräten (`COMPANION_LATEST_VERSION` hat Vorrang), und die Companion-Apps zeigen ihren Benutzern „Update verfügbar“ mit Download.
 
+## API-Schlüssel
+
+Reiter **API-Schlüssel** in der Serververwaltung. Benutzer können sich in den Einstellungen persönliche Schlüssel für die Schnittstelle `/api/v1` anlegen ([API.md](API.md)).
+
+**Richtlinie** (gilt sofort, Speichern nötig):
+
+- *API-Schlüssel erlauben* (Standard an). Aus: Niemand kann Schlüssel anlegen, und vorhandene werden **nicht mehr akzeptiert** (Antwort 403). Sie bleiben gespeichert und gelten wieder, sobald du die Richtlinie einschaltest.
+- *Unbegrenzte Laufzeit erlauben* (Standard an). Aus: Neue Schlüssel brauchen ein Ablaufdatum. Bereits ausgestellte unbegrenzte Schlüssel bleiben gültig, bis du sie ungültig machst.
+- *Längste Laufzeit* (Standard 1 Jahr) für befristete Schlüssel; wirkt nur auf neu angelegte.
+
+**Übersicht aller Schlüssel:** Benutzer, Bezeichnung, Kürzel, Berechtigung, angelegt, läuft ab, zuletzt benutzt und Status (aktiv, abgelaufen, widerrufen), mit Suche (Benutzer, Bezeichnung, Kürzel) und Statusfilter. **Ungültig machen** widerruft einen Schlüssel sofort; das steht im Protokoll. Den Klartext sieht niemand, auch du nicht.
+
+**Konten und Schlüssel:** Gesperrte Benutzer können ihre Schlüssel nicht nutzen (403), nach der Freischaltung gelten sie wieder. Gelöschte Benutzer nehmen ihre Schlüssel mit. Eine Passwortänderung oder das Zurücksetzen von Passkeys widerruft Schlüssel **nicht**; wer ein Konto als gefährdet ansieht, sperrt es oder macht die Schlüssel hier ungültig. Wiederholt falsche Schlüssel führen wie falsche Anmeldungen zur automatischen IP-Sperre (siehe *Sicherheit & Sperren*). Die Tabelle gehört zur Sicherung und wird wiederhergestellt.
+
 ## Protokoll
 
 ![Protokoll](screenshots/15-admin-protokoll.png)
