@@ -813,7 +813,7 @@ function windowBody() {
 const toggle = (k, v) => `<button class="switch ${v ? 'on' : ''}" data-a="tog" data-k="${k}" role="switch" aria-checked="${!!v}"></button>`;
 function setRow(t, s, ctl) { return `<div class="setrow"><div class="tx"><b>${t}</b><span>${s}</span></div>${ctl}</div>`; }
 function vSettings() {
-  const tabs = [['work', 'Arbeitszeit'], ['rec', 'Zeiterfassung'], ['hol', 'Feiertage'], ['trk', 'Tracking & Datenschutz'], ['sec', 'Sicherheit & Passkeys'], ['prof', 'Profil']];
+  const tabs = [['work', 'Arbeitszeit'], ['rec', 'Zeiterfassung'], ['hol', 'Feiertage'], ['trk', 'Tracking & Datenschutz'], ['sec', 'Sicherheit & Passkeys'], ['keys', 'API-Schlüssel'], ['prof', 'Profil']];
   const head = `<div class="tabs">${tabs.map(([k, l]) => `<button class="${S.setTab === k ? 'on' : ''}" data-a="setTab" data-v="${k}">${l}</button>`).join('')}</div>`;
   let body = '';
   const t = dayStat(TODAY);
@@ -882,6 +882,8 @@ function vSettings() {
         <div class="row" style="margin-top:12px"><input type="text" id="excl-in" placeholder="App-Name hinzufügen" style="max-width:220px"><button class="btn" data-a="exclAdd">${ic('plus', 15)} Hinzufügen</button></div></div>
       <div class="card"><div class="ch"><h3>Deine Daten</h3></div><div class="row wrap"><button class="btn" data-a="exportCsv">${ic('download', 15)} Export (CSV)</button><button class="btn danger" data-a="wipeApps">${ic('trash', 15)} App-Verlauf löschen</button></div>
         <div class="callout info" style="margin-top:12px">${ic('shield')}<span>Es werden nur App-Name und Zeitstempel gespeichert – keine Tastatureingaben, Screenshots oder Dokumentinhalte.</span></div></div></div></div>`;
+  } else if (S.setTab === 'keys') {
+    body = vApiKeys();
   } else if (S.setTab === 'sec') {
     body = `<div class="g-1-1"><div class="card"><div class="ch"><h3>Passkeys</h3><button class="btn primary sm right" data-a="passkeyAdd">${ic('plus', 15)} Passkey hinzufügen</button></div>
       <p class="hint" style="margin-bottom:12px">Melde dich mit Fingerabdruck, Gesicht oder Geräte-PIN an – schneller und sicherer als ein Passwort.</p>
@@ -918,7 +920,7 @@ const STAT = { active: ['Aktiv', 'good'], pending: ['Wartet auf Freigabe', 'warn
 const TODAYL = { tracking: ['Tracking läuft', 'run'], locked: ['Gesperrt', 'lock'], paused: ['Pausiert', 'lock'], asking: ['Rückfrage offen', 'lock'], vacation: ['Urlaub', ''], none: ['–', ''] };
 const fmtSize = b => b < 1048576 ? Math.max(1, Math.round(b / 1024)) + ' KB' : (b / 1048576).toFixed(1).replace('.', ',') + ' MB';
 const fmtStamp = iso => { const d = new Date(iso); return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
-const KIND_LABEL = { edit: 'Zeiten bearbeitet', login: 'Anmeldung', totp: 'Zweiter Faktor', passkey: 'Passkey', register: 'Registrierung', setup: 'Einrichtung', origin: 'Origin-Prüfung', device_pair: 'Gerät', block: 'IP-Sperre', unblock: 'Entsperrt', admin: 'Verwaltung', backup: 'Sicherung', restore: 'Wiederherstellung' };
+const KIND_LABEL = { edit: 'Zeiten bearbeitet', login: 'Anmeldung', totp: 'Zweiter Faktor', passkey: 'Passkey', register: 'Registrierung', setup: 'Einrichtung', origin: 'Origin-Prüfung', apikey: 'API-Schlüssel', device_pair: 'Gerät', block: 'IP-Sperre', unblock: 'Entsperrt', admin: 'Verwaltung', backup: 'Sicherung', restore: 'Wiederherstellung' };
 const shortUa = ua => { if (!ua) return '–'; const b = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : /tickly-companion/.test(ua) ? 'Companion' : ua.slice(0, 18); const o = /Windows/.test(ua) ? 'Windows' : /Mac OS/.test(ua) ? 'macOS' : /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iOS' : /Linux/.test(ua) ? 'Linux' : ''; return o ? `${b} · ${o}` : b; };
 const place = (ip, cc) => `<span class="mono sm">${esc(ip || '–')}</span>${cc ? ` <span title="${esc(countryName(cc))}">${flag(cc)} <span class="muted xs">${esc(cc)}</span></span>` : ''}`;
 function vMail() {
@@ -1022,7 +1024,7 @@ function vAdmin() {
   const U = S.users, q = S.adminQ.toLowerCase();
   const filtered = U.filter(u => (S.adminFilter === 'all' || u.status === S.adminFilter) && (!q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)));
   const cnt = k => U.filter(u => u.status === k).length, act = U.filter(u => u.status === 'active');
-  const head = `<div class="tabs"><button class="${S.adminTab === 'users' ? 'on' : ''}" data-a="adminTab" data-v="users">Benutzer</button><button class="${S.adminTab === 'reg' ? 'on' : ''}" data-a="adminTab" data-v="reg">Registrierung & Richtlinien</button><button class="${S.adminTab === 'backup' ? 'on' : ''}" data-a="adminTab" data-v="sec">Sicherheit & Sperren${S.sec && S.sec.blocked.length ? ` <span class="badge bad" style="margin-left:4px">${S.sec.blocked.length}</span>` : ''}</button><button class="${S.adminTab === 'mail' ? 'on' : ''}" data-a="adminTab" data-v="mail">E-Mail</button><button class="${S.adminTab === 'sess' ? 'on' : ''}" data-a="adminTab" data-v="sess">Sitzungen & Geräte</button><button class="${S.adminTab === 'log' ? 'on' : ''}" data-a="adminTab" data-v="log">Protokoll</button><button class="${S.adminTab === 'backup' ? 'on' : ''}" data-a="adminTab" data-v="backup">Sicherung</button></div>`;
+  const head = `<div class="tabs"><button class="${S.adminTab === 'users' ? 'on' : ''}" data-a="adminTab" data-v="users">Benutzer</button><button class="${S.adminTab === 'reg' ? 'on' : ''}" data-a="adminTab" data-v="reg">Registrierung & Richtlinien</button><button class="${S.adminTab === 'backup' ? 'on' : ''}" data-a="adminTab" data-v="sec">Sicherheit & Sperren${S.sec && S.sec.blocked.length ? ` <span class="badge bad" style="margin-left:4px">${S.sec.blocked.length}</span>` : ''}</button><button class="${S.adminTab === 'mail' ? 'on' : ''}" data-a="adminTab" data-v="mail">E-Mail</button><button class="${S.adminTab === 'sess' ? 'on' : ''}" data-a="adminTab" data-v="sess">Sitzungen & Geräte</button><button class="${S.adminTab === 'log' ? 'on' : ''}" data-a="adminTab" data-v="log">Protokoll</button><button class="${S.adminTab === 'keys' ? 'on' : ''}" data-a="adminTab" data-v="keys">API-Schlüssel</button><button class="${S.adminTab === 'backup' ? 'on' : ''}" data-a="adminTab" data-v="backup">Sicherung</button></div>`;
   const kpi = `<div class="g4"><div class="tile"><div class="l">${ic('users', 15)}Benutzer</div><div class="v">${U.length}</div><div class="s">${cnt('active')} aktiv · ${cnt('blocked')} gesperrt</div></div>
     <div class="tile"><div class="l">${ic('bolt', 15)}Heute aktiv</div><div class="v">${U.filter(u => u.today === 'tracking').length}</div><div class="s">Companion verbunden</div></div>
     <div class="tile"><div class="l">${ic('clock' in ICONS ? 'clock' : 'day', 15)}Wartet auf Freigabe</div><div class="v">${cnt('pending')}</div><div class="s">${cnt('pending') ? 'Aktion erforderlich' : 'Alles erledigt'}</div></div>
@@ -1032,6 +1034,7 @@ function vAdmin() {
   if (S.adminTab === 'mail') return `<div class="stack">${head}${vMail()}</div>`;
   if (S.adminTab === 'sess') return `<div class="stack">${head}${vSessions()}</div>`;
   if (S.adminTab === 'log') return `<div class="stack">${head}${vLog()}</div>`;
+  if (S.adminTab === 'keys') return `<div class="stack">${head}${vAdminApiKeys()}</div>`;
   if (S.adminTab === 'reg') {
     return `<div class="stack">${head}<div class="g-1-1"><div class="card"><div class="ch"><h3>Registrierung</h3></div>
       ${setRow('Offene Registrierung', 'Jeder kann sich selbst ein Konto anlegen. Aus: nur per Einladung.', toggle('reg.open', S.reg.open))}
@@ -1188,6 +1191,7 @@ function renderModal() {
     <div class="mf"><button class="btn" data-a="modalClose">Abbrechen</button><button class="btn ${m.action === 'disable' ? 'danger' : 'primary'}" data-a="totpDo">${m.action === 'disable' ? 'Ausschalten' : 'Neu erzeugen'}</button></div></div></div>`;
   if (m.type === 'confirm') return `<div class="ov" data-a="ovClose"><div class="modal" style="width:min(420px,100%)"><div class="mh"><h3>${esc(m.title)}</h3></div><div class="mb"><p class="ink2">${esc(m.text)}</p></div><div class="mf"><button class="btn" data-a="modalClose">Abbrechen</button><button class="btn solid-danger" data-a="confirmOk">${esc(m.ok || 'Löschen')}</button></div></div></div>`;
   if (m.type === 'rename') return `<div class="ov" data-a="ovClose"><div class="modal" style="width:min(420px,100%)"><div class="mh"><h3>Passkey umbenennen</h3></div><div class="mb"><input type="text" id="rn-in" value="${esc(m.name)}"></div><div class="mf"><button class="btn" data-a="modalClose">Abbrechen</button><button class="btn primary" data-a="renameOk">Speichern</button></div></div></div>`;
+  if (m.type === 'apikeyNew' || m.type === 'apikey') return vApiKeyModal(m);
   return '';
 }
 

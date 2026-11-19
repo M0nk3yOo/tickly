@@ -29,11 +29,11 @@ const FORMAT: &str = "tickly-backup";
 const VERSION: u64 = 1;
 const KEEP_PRE_RESTORE: u32 = 5;
 /// Tabellen in der Reihenfolge, in der sie wieder eingefügt werden (Fremdschlüssel).
-const TABLES: [&str; 8] = ["users", "credentials", "recovery_codes", "security_answers", "absences", "days", "devices", "app_settings"];
+const TABLES: [&str; 9] = ["users", "credentials", "recovery_codes", "security_answers", "absences", "days", "devices", "app_settings", "api_keys"];
 /// Fehlt in Sicherungen aus früheren Versionen; gilt dann als leer.
-const OPTIONAL: [&str; 2] = ["recovery_codes", "security_answers"];
+const OPTIONAL: [&str; 3] = ["recovery_codes", "security_answers", "api_keys"];
 /// Tabellen mit fortlaufender Nummer, deren Zähler nach dem Einfügen nachgezogen werden muss.
-const SERIALS: [(&str, &str); 3] = [("credentials", "id"), ("absences", "id"), ("recovery_codes", "id")];
+const SERIALS: [(&str, &str); 4] = [("credentials", "id"), ("absences", "id"), ("recovery_codes", "id"), ("api_keys", "id")];
 const MAX_UPLOAD: usize = 512 * 1024 * 1024;
 
 pub fn routes() -> Router<Arc<App>> {

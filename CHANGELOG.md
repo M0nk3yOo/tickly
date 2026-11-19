@@ -1,5 +1,12 @@
 # Änderungen
 
+## Unveröffentlicht
+
+- **Persönliche API-Schlüssel und Schnittstelle `/api/v1`.** Einstellungen → „API-Schlüssel“: Schlüssel mit Bezeichnung, Laufzeit (30/90/180 Tage, 1 Jahr, unbegrenzt) und Berechtigung (nur lesen oder lesen und schreiben) anlegen; der Klartext erscheint nur einmal, gespeichert wird nur ein Hash plus Kürzel. Liste mit Ablauf und „zuletzt benutzt“, jeder Schlüssel einzeln widerrufbar, höchstens 20 aktive je Benutzer.
+- **Schnittstelle** (`Authorization: Bearer tkl_…`, nur unter `/api/v1`): `me`, `status`, `days`, `days/{datum}`, `balance`, `absences` (lesen, anlegen, ändern, löschen), `tracking/start|pause|stop` (auch Ende vorab festlegen), `entries` (Zeit eintragen), `export.csv`. Gerechnet wird mit denselben Funktionen wie in der Weboberfläche. Beschreibung mit curl-Beispielen: `docs/API.md`.
+- **Serververwaltung → API-Schlüssel:** Übersicht aller Schlüssel mit Suche und Statusfilter, Schlüssel ungültig machen; Richtlinie: Schlüssel erlauben (Standard an), unbegrenzte Laufzeit erlauben (Standard an), längste Laufzeit. Bei „aus“ werden Schlüssel nicht mehr akzeptiert; gesperrte Benutzer können sie nicht nutzen. Eine Passwortänderung widerruft Schlüssel nicht (dokumentiert).
+- Falsche API-Schlüssel zählen wie falsche Anmeldungen für die automatische IP-Sperre; Anlegen, Widerrufen und Ablehnungen stehen im Protokoll. Die neue Tabelle `api_keys` (Migration 0016) ist Teil der Sicherung.
+
 ## 0.9.18
 
 Aktualisierung von 0.9.17: Server und Companion ändern sich (keine Datenbankänderung). Die Rüstzeit beim Start und Herunterfahren rechnet der Companion mit; ein älterer Companion ignoriert sie.

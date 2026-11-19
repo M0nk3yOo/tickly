@@ -32,6 +32,7 @@ Migrationen in `apps/api/migrations`, werden beim Start eingespielt.
 | `recovery_codes` | Einmalcodes (Hash) |
 | `absences` | Urlaub, Krankheit, Zeitausgleich |
 | `days` | je Benutzer und Datum der Tageszustand (`jsonb`) |
+| `api_keys` | persönliche API-Schlüssel (nur SHA-256-Hash und Präfix, Berechtigung, Ablauf, zuletzt benutzt, widerrufen) |
 | `devices`, `pair_codes` | gekoppelte Companion-Geräte (Token-Hash, Version, `last_seq`), Kopplungscodes |
 | `sessions` | Sitzungen mit IP, Land, Browser, letzter Aktivität |
 | `audit_log`, `ip_blocks` | Protokoll, IP-Sperren |
@@ -62,7 +63,12 @@ Alle Pfade unter `/api`. Antworten sind JSON; Fehler `{ "error": "…" }`. Anmel
 | Daten | `GET /snapshot`, `GET /today`, `PUT /settings`, `POST /me`, `POST /absences`, `PUT/DELETE /absences/{id}`, `PUT /days/{date}`, `POST /companion` |
 | Sitzungen | `GET /sessions`, `DELETE /sessions/{id}` |
 | Geräte | `POST /devices/pair-code`, `DELETE /devices/{id}`, `PATCH /devices/{id}` (Auto-Start je Gerät), `POST /device/pair`, `POST /device/events`, `GET /device/state`, `POST /device/prefs` (das Gerät stellt seinen Auto-Start selbst ein) |
+| API-Schlüssel | `GET/POST /apikeys`, `DELETE /apikeys/{id}` (Cookie); `GET /admin/apikeys`, `DELETE /admin/apikeys/{id}`, `PUT /admin/apikey-policy`; die Schnittstelle selbst unter `/v1/*` mit `Authorization: Bearer tkl_…`, siehe [API.md](API.md) |
 | Administration | `/admin/users…`, `/admin/registration`, `/admin/security`, `/admin/ip-blocks`, `/admin/log`, `/admin/sessions`, `/admin/devices/{id}`, `/admin/smtp`, `/admin/backup`, `/admin/backups`, `/admin/backup-policy`, `/admin/restore` |
+
+## Schnittstelle mit API-Schlüsseln
+
+`/api/v1/*` (Modul `apikeys.rs`) ist die einzige Schnittstelle für eigene Programme; Beschreibung mit Beispielen in **[API.md](API.md)**. Sie hat eine **eigene Anmeldung** per Bearer-Schlüssel `tkl_…` (Middleware `v1_auth`), unabhängig von Cookie-Sitzung und Geräte-Token: `auth()` liest nur das Cookie, `auth_device()` nur Geräte-Token, deshalb öffnet ein API-Schlüssel nie Administration, Passwörter, Passkeys, Geräte oder Sitzungen. Die Handler benutzen dieselben Bausteine wie die Weboberfläche (`Calc`/`day_stat`/`total_balance` aus `tickly-core`, `events::apply` für Tracking, `edit::save_day` für Zeiten); nichts wird doppelt gerechnet. Fehlversuche mit falschem Schlüssel zählen als Art `apikey` für die IP-Sperre. Richtlinie (an/aus, unbegrenzt, längste Laufzeit) in `app_settings` unter `apikeys`; die Tabelle `api_keys` ist Teil der Sicherung.
 
 ## Zeit und Datum
 

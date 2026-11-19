@@ -27,7 +27,7 @@ impl ClientIp {
 }
 
 /// Fehlversuche dieser Arten zählen für die automatische Sperre.
-const FAIL_KINDS: [&str; 6] = ["login", "totp", "passkey", "device_pair", "setup", "reset_q"];
+const FAIL_KINDS: [&str; 7] = ["login", "totp", "passkey", "device_pair", "setup", "reset_q", "apikey"];
 
 /* ---------- Client-IP ---------- */
 fn in_cidr(ip: IpAddr, net: IpAddr, bits: u8) -> bool {
@@ -267,7 +267,7 @@ async fn list_log(State(app): St, h: HeaderMap, Query(q): Query<LogQ>) -> Res<Js
     let limit = q.limit.unwrap_or(100).clamp(1, 500);
     // Gruppen für die Filter der Oberfläche
     let kinds: Vec<String> = match q.kind.as_deref() {
-        Some("auth") => vec!["login", "totp", "passkey", "register"],
+        Some("auth") => vec!["login", "totp", "passkey", "register", "apikey"],
         Some("fail") => vec![],
         Some("block") => vec!["block", "unblock"],
         Some("admin") => vec!["admin", "backup", "restore", "edit"],
