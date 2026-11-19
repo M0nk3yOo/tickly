@@ -1,8 +1,8 @@
 # Änderungen
 
-## Unveröffentlicht
+## 0.9.19
 
-Server, Weboberfläche und Companion ändern sich. Der Server legt beim Start die neue Tabelle für API-Schlüssel an (Migration `0016`, automatisch; sie ist in Sicherung und Wiederherstellung enthalten). Die Korrekturen am Companion (gesperrter Mac, Windows-Herunterfahren) wirken erst mit dem neuen Companion.
+Aktualisierung von 0.9.18: Server, Weboberfläche und Companion ändern sich. Der Server legt beim Start die neue Tabelle für API-Schlüssel an (Migration `0016`, automatisch; sie ist in Sicherung und Wiederherstellung enthalten). Die Korrekturen am Companion (gesperrter Mac, Windows-Herunterfahren) wirken erst mit dem neuen Companion.
 
 - **Registrierung „direkt mit Passkey“.** War die E-Mail-Bestätigung eingeschaltet, gab es bis zum Klick auf den Link in der Mail keine Sitzung: Der Passkey ließ sich nicht anlegen, die Seite zeigte trotzdem „wartet auf Freigabe“, und die Anmeldung scheiterte später mit „Für diese E-Mail ist kein Passkey hinterlegt“. Jetzt weist die Seite auf die Bestätigung hin und öffnet nach dem Klick auf den Link die Passkey-Einrichtung (auch vor der Freigabe, mit eingeschränkter Sitzung). Scheitert die Einrichtung (abgebrochen, nicht unterstützt), bleibt die Seite stehen und lässt es wiederholen, statt „wartet auf Freigabe“ zu zeigen. Der Hinweis bei der Anmeldung nennt jetzt den Ausweg „Passwort vergessen“ bzw. den Administrator.
 - **Gesperrter Mac startet kein Tracking mehr.** Ein Mac, der nie herunterfährt und im Hintergrund aufwacht, startete im Startzeitfenster ein Tracking, obwohl der Bildschirm noch gesperrt war. Der Companion markiert seine Ereignisse jetzt mit dem Sperrzustand; bei gesperrtem Bildschirm startet das Tracking nicht von selbst (auch nicht auf dem Server), sondern sofort nach dem ersten echten Entsperren, wenn das Zeitfenster dann noch läuft.

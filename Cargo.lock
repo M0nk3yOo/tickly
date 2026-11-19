@@ -2800,7 +2800,7 @@ dependencies = [
 
 [[package]]
 name = "tickly-agent"
-version = "0.9.18"
+version = "0.9.19"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -2813,7 +2813,7 @@ dependencies = [
 
 [[package]]
 name = "tickly-api"
-version = "0.9.18"
+version = "0.9.19"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -2850,7 +2850,7 @@ dependencies = [
 
 [[package]]
 name = "tickly-core"
-version = "0.9.18"
+version = "0.9.19"
 dependencies = [
  "chrono",
  "serde",
@@ -2859,7 +2859,7 @@ dependencies = [
 
 [[package]]
 name = "tickly-platform"
-version = "0.9.18"
+version = "0.9.19"
 dependencies = [
  "block2",
  "core-foundation",

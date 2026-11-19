@@ -70,7 +70,7 @@ const mock: { s: UiState } = {
     server: "https://zeit.example.com",
     deviceName: "DESKTOP-ANDRE",
     userName: "André Becker",
-    version: "0.9.18",
+    version: "0.9.19",
     os: "windows",
     autostart: true,
     update: new URLSearchParams(location.search).get("update") === "1" ? { latest: "0.9.19", notes: "", url: "https://github.com/M0nk3yOo/tickly/releases/latest", download: "https://github.com/M0nk3yOo/tickly/releases/latest", size: 4_200_000 } : null,
